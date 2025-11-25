@@ -73,5 +73,8 @@
   },
   "2.1.9": {
     "en": "fix: race condition"
+  },
+  "3.0.0": {
+    "en": "feat: complete Homey Energy compliance refactor"
   }
 }
