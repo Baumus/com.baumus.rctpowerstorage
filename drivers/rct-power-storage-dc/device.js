@@ -1,24 +1,57 @@
 'use strict';
 
-const { Device } = require('homey');
-const Connection = require('../../lib/rctjavalib/connection');
+const RCTDevice = require('../../lib/rct-device');
 const { Identifier, SOCStrategy } = require('../../lib/rctjavalib/datagram');
 
-class MyDevice extends Device {
+class MyDevice extends RCTDevice {
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit() {
     this.log('MyDevice has been initialized');
-    this.conn = null;
-    // check if migration is needed
+    await super.onInit();
+    
+    // Migrate device class from solarpanel to battery
+    if (this.getClass() !== 'battery') {
+      this.log('Migrating device class from solarpanel to battery');
+      await this.setClass('battery').catch(this.error);
+    }
+    
+    // Migrate meter_power capabilities for charged/discharged tracking
+    if (!this.hasCapability('meter_power.charged')) {
+      this.log('Adding meter_power.charged capability');
+      await this.addCapability('meter_power.charged');
+      // Migrate existing meter_power value if it exists
+      if (this.hasCapability('meter_power')) {
+        const oldValue = this.getCapabilityValue('meter_power') || 0;
+        await this.setCapabilityValue('meter_power.charged', oldValue / 2);
+        await this.setCapabilityValue('meter_power.discharged', oldValue / 2);
+      } else {
+        await this.setCapabilityValue('meter_power.charged', 0);
+      }
+    }
+    if (!this.hasCapability('meter_power.discharged')) {
+      this.log('Adding meter_power.discharged capability');
+      await this.addCapability('meter_power.discharged');
+      if (!this.getCapabilityValue('meter_power.discharged')) {
+        await this.setCapabilityValue('meter_power.discharged', 0);
+      }
+    }
+    // Remove old meter_power capability if it exists
+    if (this.hasCapability('meter_power')) {
+      this.log('Removing old meter_power capability');
+      await this.removeCapability('meter_power');
+    }
+    
+    // Check if migration is needed for capability
     if (this.hasCapability('soc_stratgey') === false) {
       await this.addCapability('soc_strategy');
     }
 
-    this.setAvailable();
-    await this.ensureConnection();
+    // Initialize energy tracking
+    this._lastUpdate = Date.now();
+    this._lastBatteryPower = 0;
 
     // Error handling for connection errors
     try {
@@ -60,35 +93,15 @@ class MyDevice extends Device {
       await this.setSettings(updateSettings);
     } catch (error) {
       this.log('Error during initialization:', error);
-
-      // Specific handling for EHOSTUNREACH error
-      if (error.code === 'EHOSTUNREACH') {
-        await this.setUnavailable(`The target device ${this.getSetting('DeviceIP')}:${this.getSetting('DevicePort')} is unreachable.`);
-      } else {
-        // Handle other errors or set as unavailable
-        await this.setUnavailable('Device is currently unavailable due to an error.');
-      }
+      await this.handleConnectionError(error);
     }
-
-    // Polling for regular updates
-    this.pollingInterval = setInterval(() => {
-      this.updateDeviceData();
-    }, this.getSetting('polling_interval') * 1000);
   }
 
   /**
    * onDeleted is called when the user deleted the device.
    */
   async onDeleted() {
-    this.log('MyDevice has been deleted');
-    this.deleted = true;
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-    }
-    if (this.conn) {
-      this.conn.close();
-      this.conn = null;
-    }
+    await super.onDeleted();
   }
 
   /**
@@ -98,64 +111,108 @@ class MyDevice extends Device {
     if (this.deleted) return;
     const ok = await this.ensureConnection();
     if (!ok) {
-      // If connection failed, we don't want to throw an error here, just return
       this.log('Connection failed, skipping update');
       return;
     }
 
     try {
-      // Query and update regularly changing data
-      const power = await this.conn.queryFloat32(Identifier.INVERTER_AC_POWER_W);
-      await this.setCapabilityValue('measure_power', Math.round(power));
-      const tokens = { measure_power: Math.round(power) };
+      // Get current timestamp for energy calculations
+      const now = Date.now();
+      const timeDeltaHours = (now - this._lastUpdate) / (1000 * 60 * 60);
+
+      // IMPORTANT: RCT battery power convention
+      // RCT reports: positive = charging, negative = discharging
+      // Homey requires: positive = discharging, negative = charging
+      // So we need to INVERT the sign
+      const batteryPowerRaw = await this.conn.queryFloat32(Identifier.BATTERY_POWER_W);
+      const batteryPowerHomey = -batteryPowerRaw; // INVERT for Homey convention
+      
+      // Set measure_power with Homey convention (+ discharging, - charging)
+      await this.setCapabilityValue('measure_power', Math.round(batteryPowerHomey));
+
+      // Keep custom capability with original RCT convention for backwards compatibility
+      await this.setCapabilityValue('battery_power', Math.round(batteryPowerRaw));
+
+      // Calculate cumulative energy separately for charging and discharging
+      if (timeDeltaHours > 0) {
+        const avgPower = (batteryPowerRaw + this._lastBatteryPower) / 2;
+        const energyDelta = Math.abs(avgPower * timeDeltaHours) / 1000; // Convert Wh to kWh
+        
+        // RCT convention: negative = discharging, positive = charging
+        if (avgPower < 0) {
+          // Battery is discharging (providing power to home)
+          const currentDischarged = this.getCapabilityValue('meter_power.discharged') || 0;
+          const newDischarged = currentDischarged + energyDelta;
+          await this.setCapabilityValue('meter_power.discharged', newDischarged);
+          this.log(`Discharged: ${energyDelta.toFixed(3)} kWh, Total discharged: ${newDischarged.toFixed(2)} kWh`);
+        } else if (avgPower > 0) {
+          // Battery is charging (consuming power)
+          const currentCharged = this.getCapabilityValue('meter_power.charged') || 0;
+          const newCharged = currentCharged + energyDelta;
+          await this.setCapabilityValue('meter_power.charged', newCharged);
+          this.log(`Charged: ${energyDelta.toFixed(3)} kWh, Total charged: ${newCharged.toFixed(2)} kWh`);
+        }
+      }
+
+      // Store for next calculation
+      this._lastBatteryPower = batteryPowerRaw;
+      this._lastUpdate = now;
+
+      // Trigger flow card with Homey convention value
+      const tokens = { measure_power: Math.round(batteryPowerHomey) };
       const state = {};
       this.homey.flow.getDeviceTriggerCard('measure_power_changed').trigger(this, tokens, state);
 
+      // Battery SOC
       const battery = await this.conn.queryFloat32(Identifier.BATTERY_SOC);
       this.setCapMeasureBattery(Math.round(battery * 100));
 
+      // Grid power (keep custom capability)
       const tgridpower = await this.conn.queryFloat32(Identifier.TOTAL_GRID_POWER_W);
       await this.setCapabilityValue('total_grid_power', Math.round(tgridpower));
 
+      // Household load (keep custom capability)
       const loadhousehold = await this.conn.queryFloat32(Identifier.LOAD_HOUSEHOLD_POWER_W);
       await this.setCapabilityValue('load_household', Math.round(loadhousehold));
 
-      const batterypower = await this.conn.queryFloat32(Identifier.BATTERY_POWER_W);
-      await this.setCapabilityValue('battery_power', Math.round(batterypower) * -1);
-
+      // SOC Strategy
       const deviceSOCStrategy = await this.conn.query(Identifier.POWER_MNG_SOC_STRATEGY);
       await this.setCapSOCStrategy(deviceSOCStrategy);
 
-      if (batterypower < -15) {
+      // Battery mode (using RCT convention for backwards compatibility)
+      if (batteryPowerRaw < -15) {
         await this.setCapabilityValue('battery_modus', 'charge');
-      } else if (batterypower > 15) {
+      } else if (batteryPowerRaw > 15) {
         await this.setCapabilityValue('battery_modus', 'discharge');
       } else {
         await this.setCapabilityValue('battery_modus', 'idle');
       }
 
+      // Solar power (keep custom capability)
       const solarpowera = await this.conn.queryFloat32(Identifier.SOLAR_GEN_A_POWER_W);
       const solarpowerb = await this.conn.queryFloat32(Identifier.SOLAR_GEN_B_POWER_W);
       const solarpower = solarpowera + solarpowerb;
       await this.setCapSolarPower(Math.round(solarpower));
 
-      // Set the device as available
       this.setAvailable();
     } catch (error) {
-      this.log('Error updating device:', error);
-      if (this.conn) {
-        try {
-          this.conn.close();
-        } catch (e) {}
-        this.conn = null;
-      }
+      await this.handleConnectionError(error);
+    }
+  }
 
-      // Specific handling for EHOSTUNREACH error
-      if (error.code === 'EHOSTUNREACH') {
-        await this.setUnavailable(`The target device ${this.getSetting('DeviceIP')}:${this.getSetting('DevicePort')} is unreachable.`);
-      } else {
-        await this.setUnavailable('Device is currently unavailable due to an error.');
-      }
+  async handleConnectionError(error) {
+    this.log('Error in device operation:', error);
+    if (this.conn) {
+      try {
+        this.conn.close();
+      } catch (e) {}
+      this.conn = null;
+    }
+
+    if (error.code === 'EHOSTUNREACH') {
+      await this.setUnavailable(`The target device ${this.getStoreValue('address')}:${this.getStoreValue('port')} is unreachable.`);
+    } else {
+      await this.setUnavailable('Device is currently unavailable due to an error.');
     }
   }
 
@@ -302,33 +359,6 @@ class MyDevice extends Device {
         await this.setUnavailable('Device is currently unavailable due to an error.');
       }
     }
-  }
-
-  async ensureConnection({ throwOnError = false } = {}) {
-    if (!this.conn) {
-      const now = Date.now();
-      if (this._lastConnectAttempt && now - this._lastConnectAttempt < 10000) {
-        this.log('Delaying reconnect after recent failure');
-        if (throwOnError) {
-          throw new Error('Delaying reconnect after recent failure');
-        }
-        return false; // silent fail für Polling
-      }
-      this.conn = Connection.getPooledConnection(this.getSetting('DeviceIP'), this.getSetting('DevicePort'), 5000);
-      try {
-        await this.conn.connect();
-      } catch (error) {
-        this._lastConnectAttempt = now;
-        this.log('Error connecting to device:', error);
-        this.conn = null;
-        this.setUnavailable(`Could not connect to device at ${this.getSetting('DeviceIP')}:${this.getSetting('DevicePort')}`);
-        if (throwOnError) {
-          throw new Error(`Could not connect to device at ${this.getSetting('DeviceIP')}:${this.getSetting('DevicePort')}`);
-        }
-        return false;
-      }
-    }
-    return true;
   }
 
 }

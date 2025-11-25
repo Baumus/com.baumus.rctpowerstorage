@@ -1,0 +1,55 @@
+{
+  "name": {
+    "en": "Solar Panel"
+  },
+  "class": "solarpanel",
+  "capabilities": [
+    "measure_power", "meter_power"
+  ],
+  "energy": {
+    "meterPowerExportedCapability": "meter_power"
+  },
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
+  "images": {
+    "small": "{{driverAssetsPath}}/images/small.png",
+    "large": "{{driverAssetsPath}}/images/large.png",
+    "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "enter_ip"
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ],
+  "settings": [
+    {
+      "type": "group",
+      "label": { "en": "Connection" },
+      "children": [
+        {
+          "id": "polling_interval",
+          "type": "number",
+          "label": { "en": "Polling interval (seconds)" },
+          "value": 60,
+          "min": 10,
+          "max": 3600
+        }
+      ]
+    }
+  ]
+}

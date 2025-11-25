@@ -1,0 +1,106 @@
+{
+  "name": {
+    "en": "Grid Meter"
+  },
+  "class": "sensor",
+  "capabilities": [
+    "measure_power",
+    "meter_power.imported",
+    "meter_power.exported"
+  ],
+  "capabilitiesOptions": {
+    "measure_power": {
+      "title": {
+        "en": "Grid Power",
+        "nl": "Netwerk Vermogen",
+        "de": "Netzleistung",
+        "fr": "Puissance Réseau",
+        "it": "Potenza Rete",
+        "sv": "Nät Effekt",
+        "no": "Nett Effekt",
+        "es": "Potencia Red",
+        "da": "Net Effekt",
+        "ru": "Мощность Сети",
+        "pl": "Moc Sieci"
+      }
+    },
+    "meter_power.imported": {
+      "title": {
+        "en": "Imported Energy",
+        "nl": "Geïmporteerde Energie",
+        "de": "Importierte Energie",
+        "fr": "Énergie Importée",
+        "it": "Energia Importata",
+        "sv": "Importerad Energi",
+        "no": "Importert Energi",
+        "es": "Energía Importada",
+        "da": "Importeret Energi",
+        "ru": "Импортированная Энергия",
+        "pl": "Energia Importowana"
+      }
+    },
+    "meter_power.exported": {
+      "title": {
+        "en": "Exported Energy",
+        "nl": "Geëxporteerde Energie",
+        "de": "Exportierte Energie",
+        "fr": "Énergie Exportée",
+        "it": "Energia Esportata",
+        "sv": "Exporterad Energi",
+        "no": "Eksportert Energi",
+        "es": "Energía Exportada",
+        "da": "Eksporteret Energi",
+        "ru": "Экспортированная Энергия",
+        "pl": "Energia Eksportowana"
+      }
+    }
+  },
+  "energy": {
+    "cumulative": true,
+    "cumulativeImportedCapability": "meter_power.imported",
+    "cumulativeExportedCapability": "meter_power.exported"
+  },
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
+  "images": {
+    "small": "{{driverAssetsPath}}/images/small.png",
+    "large": "{{driverAssetsPath}}/images/large.png",
+    "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "enter_ip"
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ],
+  "settings": [
+    {
+      "type": "group",
+      "label": { "en": "Connection" },
+      "children": [
+        {
+          "id": "polling_interval",
+          "type": "number",
+          "label": { "en": "Polling interval (seconds)" },
+          "value": 60,
+          "min": 10,
+          "max": 3600
+        }
+      ]
+    }
+  ]
+}

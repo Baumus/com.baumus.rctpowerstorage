@@ -2,7 +2,7 @@
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.baumus.rctpowerstorage",
   "version": "2.1.9",
-  "compatibility": ">=5.0.0",
+  "compatibility": ">=12.0.0",
   "sdk": 3,
   "platforms": [
     "local"
@@ -37,6 +37,730 @@
     "url": "https://github.com/Baumus/com.baumus.rctpowerstorage/issues"
   },
   "source": "https://github.com/Baumus/com.baumus.rctpowerstorage",
+  "drivers": [
+    {
+      "name": {
+        "en": "Grid Meter"
+      },
+      "class": "sensor",
+      "capabilities": [
+        "measure_power",
+        "meter_power.imported",
+        "meter_power.exported"
+      ],
+      "capabilitiesOptions": {
+        "measure_power": {
+          "title": {
+            "en": "Grid Power",
+            "nl": "Netwerk Vermogen",
+            "de": "Netzleistung",
+            "fr": "Puissance Réseau",
+            "it": "Potenza Rete",
+            "sv": "Nät Effekt",
+            "no": "Nett Effekt",
+            "es": "Potencia Red",
+            "da": "Net Effekt",
+            "ru": "Мощность Сети",
+            "pl": "Moc Sieci"
+          }
+        },
+        "meter_power.imported": {
+          "title": {
+            "en": "Imported Energy",
+            "nl": "Geïmporteerde Energie",
+            "de": "Importierte Energie",
+            "fr": "Énergie Importée",
+            "it": "Energia Importata",
+            "sv": "Importerad Energi",
+            "no": "Importert Energi",
+            "es": "Energía Importada",
+            "da": "Importeret Energi",
+            "ru": "Импортированная Энергия",
+            "pl": "Energia Importowana"
+          }
+        },
+        "meter_power.exported": {
+          "title": {
+            "en": "Exported Energy",
+            "nl": "Geëxporteerde Energie",
+            "de": "Exportierte Energie",
+            "fr": "Énergie Exportée",
+            "it": "Energia Esportata",
+            "sv": "Exporterad Energi",
+            "no": "Eksportert Energi",
+            "es": "Energía Exportada",
+            "da": "Eksporteret Energi",
+            "ru": "Экспортированная Энергия",
+            "pl": "Energia Eksportowana"
+          }
+        }
+      },
+      "energy": {
+        "cumulative": true,
+        "cumulativeImportedCapability": "meter_power.imported",
+        "cumulativeExportedCapability": "meter_power.exported"
+      },
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/grid-meter/assets/images/small.png",
+        "large": "/drivers/grid-meter/assets/images/large.png",
+        "xlarge": "/drivers/grid-meter/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "enter_ip"
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "Connection"
+          },
+          "children": [
+            {
+              "id": "polling_interval",
+              "type": "number",
+              "label": {
+                "en": "Polling interval (seconds)"
+              },
+              "value": 60,
+              "min": 10,
+              "max": 3600
+            }
+          ]
+        }
+      ],
+      "id": "grid-meter"
+    },
+    {
+      "name": {
+        "en": "RCT Power Storage DC"
+      },
+      "class": "battery",
+      "capabilities": [
+        "measure_power",
+        "measure_battery",
+        "meter_power.charged",
+        "meter_power.discharged",
+        "battery_power",
+        "battery_modus",
+        "soc_strategy",
+        "solar_power",
+        "total_grid_power",
+        "load_household"
+      ],
+      "capabilitiesOptions": {
+        "measure_power": {
+          "title": {
+            "en": "Battery Power",
+            "nl": "Batterij Vermogen",
+            "de": "Batterieleistung",
+            "fr": "Puissance Batterie",
+            "it": "Potenza Batteria",
+            "sv": "Batteri Effekt",
+            "no": "Batteri Effekt",
+            "es": "Potencia Batería",
+            "da": "Batterieffekt",
+            "ru": "Мощность Батареи",
+            "pl": "Moc Baterii"
+          }
+        },
+        "meter_power.charged": {
+          "title": {
+            "en": "Charged Energy",
+            "nl": "Geladen Energie",
+            "de": "Geladene Energie",
+            "fr": "Énergie Chargée",
+            "it": "Energia Caricata",
+            "sv": "Laddad Energi",
+            "no": "Ladet Energi",
+            "es": "Energía Cargada",
+            "da": "Ladet Energi",
+            "ru": "Заряженная Энергия",
+            "pl": "Energia Naładowana"
+          }
+        },
+        "meter_power.discharged": {
+          "title": {
+            "en": "Discharged Energy",
+            "nl": "Ontladen Energie",
+            "de": "Entladene Energie",
+            "fr": "Énergie Déchargée",
+            "it": "Energia Scaricata",
+            "sv": "Urladdad Energi",
+            "no": "Utladet Energi",
+            "es": "Energía Descargada",
+            "da": "Afladet Energi",
+            "ru": "Разряженная Энергия",
+            "pl": "Energia Rozładowana"
+          }
+        },
+        "battery_power": {
+          "title": {
+            "en": "Battery Power (Legacy)",
+            "nl": "Batterij Vermogen (Legacy)",
+            "de": "Batterieleistung (Legacy)",
+            "fr": "Puissance Batterie (Legacy)",
+            "it": "Potenza Batteria (Legacy)",
+            "sv": "Batteri Effekt (Legacy)",
+            "no": "Batteri Effekt (Legacy)",
+            "es": "Potencia Batería (Legacy)",
+            "da": "Batterieffekt (Legacy)",
+            "ru": "Мощность Батареи (Legacy)",
+            "pl": "Moc Baterii (Legacy)"
+          },
+          "uiComponent": null
+        },
+        "solar_power": {
+          "title": {
+            "en": "Solar Power (Legacy)",
+            "nl": "Zonne-energie (Legacy)",
+            "de": "Solarleistung (Legacy)",
+            "fr": "Puissance Solaire (Legacy)",
+            "it": "Potenza Solare (Legacy)",
+            "sv": "Solenergi (Legacy)",
+            "no": "Solkraft (Legacy)",
+            "es": "Energía Solar (Legacy)",
+            "da": "Solenergi (Legacy)",
+            "ru": "Солнечная Энергия (Legacy)",
+            "pl": "Energia Słoneczna (Legacy)"
+          },
+          "uiComponent": null
+        },
+        "total_grid_power": {
+          "title": {
+            "en": "Grid Power (Legacy)",
+            "nl": "Netvermogen (Legacy)",
+            "de": "Netzleistung (Legacy)",
+            "fr": "Puissance Réseau (Legacy)",
+            "it": "Potenza Rete (Legacy)",
+            "sv": "Näteffekt (Legacy)",
+            "no": "Netteffekt (Legacy)",
+            "es": "Potencia Red (Legacy)",
+            "da": "Neteffekt (Legacy)",
+            "ru": "Мощность Сети (Legacy)",
+            "pl": "Moc Sieci (Legacy)"
+          },
+          "uiComponent": null
+        },
+        "load_household": {
+          "title": {
+            "en": "Household Load (Legacy)",
+            "nl": "Huishoudelijk Verbruik (Legacy)",
+            "de": "Haushaltsverbrauch (Legacy)",
+            "fr": "Charge Domestique (Legacy)",
+            "it": "Carico Domestico (Legacy)",
+            "sv": "Hushållsbelastning (Legacy)",
+            "no": "Husholdningsbelastning (Legacy)",
+            "es": "Carga Doméstica (Legacy)",
+            "da": "Husholdningsbelastning (Legacy)",
+            "ru": "Домашняя Нагрузка (Legacy)",
+            "pl": "Obciążenie Gospodarstwa (Legacy)"
+          },
+          "uiComponent": null
+        }
+      },
+      "energy": {
+        "homeBattery": true,
+        "meterPowerImportedCapability": "meter_power.charged",
+        "meterPowerExportedCapability": "meter_power.discharged",
+        "batteries": [
+          "INTERNAL"
+        ]
+      },
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/rct-power-storage-dc/assets/images/small.png",
+        "large": "/drivers/rct-power-storage-dc/assets/images/large.png",
+        "xlarge": "/drivers/rct-power-storage-dc/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "enter_ip"
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "RCT Power Storage DC"
+          },
+          "children": [
+            {
+              "id": "DeviceId",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_capacity",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Battery Capacity in kWh"
+              }
+            },
+            {
+              "id": "DeviceIP",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "IP Address"
+              }
+            },
+            {
+              "id": "DevicePort",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Port"
+              }
+            },
+            {
+              "id": "polling_interval",
+              "type": "number",
+              "value": 20,
+              "label": {
+                "en": "Polling interval in seconds"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Grid Charging Management"
+          },
+          "children": [
+            {
+              "id": "enable_inverter_management",
+              "type": "checkbox",
+              "value": false,
+              "label": {
+                "en": "Enable Grid Charging Management"
+              },
+              "hint": {
+                "en": "USE AT YOUR OWN RISK !!! - Activate features to manage inverter operation by sending commands and writing values to the inverter's memory. You as user are fully responsible for any harm or damage caused. Please feel free to review the source code on GitHub first before activating this feature."
+              }
+            },
+            {
+              "id": "max_grid_charge_power",
+              "type": "number",
+              "value": 6000,
+              "min": 0,
+              "max": 6000,
+              "units": "watts",
+              "label": {
+                "en": "Max Grid Charge Power (W)"
+              },
+              "hint": {
+                "en": "The maximum power in Watt the inverter is allowed to charge the battery from the grid."
+              }
+            },
+            {
+              "id": "default_max_grid_charge_power",
+              "type": "number",
+              "value": 0,
+              "min": 0,
+              "max": 6000,
+              "units": "watts",
+              "label": {
+                "en": "Default Max Grid Charge Power (W)"
+              },
+              "hint": {
+                "en": "Set the default maximum grid charging power in watts. This value will be used when the inverter is reset to standard operations after grid charging. The standard value is 0 watts and should only be changed if you know what you are doing."
+              }
+            },
+            {
+              "id": "default_soc_strategy",
+              "type": "dropdown",
+              "value": "Internal",
+              "label": {
+                "en": "Default SOC Strategy"
+              },
+              "values": [
+                {
+                  "id": "SOC",
+                  "label": {
+                    "en": "Maintain SOC",
+                    "nl": "SOC behouden",
+                    "de": "SOC halten",
+                    "fr": "Maintenir SOC",
+                    "it": "Mantieni SOC",
+                    "sv": "Behåll SOC",
+                    "no": "Behold SOC",
+                    "es": "Mantener SOC",
+                    "da": "Behold SOC",
+                    "ru": "Поддерживать SOC",
+                    "pl": "Utrzymuj SOC"
+                  }
+                },
+                {
+                  "id": "Constant",
+                  "label": {
+                    "en": "Constant",
+                    "nl": "Constante",
+                    "de": "Konstante",
+                    "fr": "Constante",
+                    "it": "Costante",
+                    "sv": "Konstant",
+                    "no": "Konstant",
+                    "es": "Constante",
+                    "da": "Konstant",
+                    "ru": "Константа",
+                    "pl": "Stała"
+                  }
+                },
+                {
+                  "id": "External",
+                  "label": {
+                    "en": "External",
+                    "nl": "Extern",
+                    "de": "Extern",
+                    "fr": "Externe",
+                    "it": "Esterno",
+                    "sv": "Extern",
+                    "no": "Ekstern",
+                    "es": "Externo",
+                    "da": "Ekstern",
+                    "ru": "Внешний",
+                    "pl": "Zewnętrzny"
+                  }
+                },
+                {
+                  "id": "Middle Voltage",
+                  "label": {
+                    "en": "Middle Voltage",
+                    "nl": "Middenspanning",
+                    "de": "Mittlere Spannung",
+                    "fr": "Tension Moyenne",
+                    "it": "Tensione Media",
+                    "sv": "Mellan Spänning",
+                    "no": "Mellomspenning",
+                    "es": "Voltaje Medio",
+                    "da": "Mellem Spænding",
+                    "ru": "Среднее Напряжение",
+                    "pl": "Średnie Napięcie"
+                  }
+                },
+                {
+                  "id": "Internal",
+                  "label": {
+                    "en": "Internal",
+                    "nl": "Intern",
+                    "de": "Intern",
+                    "fr": "Interne",
+                    "it": "Interno",
+                    "sv": "Intern",
+                    "no": "Intern",
+                    "es": "Interno",
+                    "da": "Intern",
+                    "ru": "Внутренний",
+                    "pl": "Wewnętrzny"
+                  }
+                },
+                {
+                  "id": "Schedule",
+                  "label": {
+                    "en": "Schedule",
+                    "nl": "Schema",
+                    "de": "Zeitplan",
+                    "fr": "Horaire",
+                    "it": "Programma",
+                    "sv": "Schema",
+                    "no": "Timeplan",
+                    "es": "Programa",
+                    "da": "Tidsplan",
+                    "ru": "Расписание",
+                    "pl": "Harmonogram"
+                  }
+                }
+              ],
+              "hint": {
+                "en": "Set the default SOC strategy for the inverter. The SOC strategy will be used when the inverter is reset to standard operations after grid charging. The standard value is 'Internal' and should only be changed if you know what you are doing."
+              }
+            },
+            {
+              "id": "default_use_grid_power_enabled",
+              "type": "checkbox",
+              "value": false,
+              "label": {
+                "en": "Default Use Grid Power Enabled"
+              },
+              "hint": {
+                "en": "Set the default value for the 'Use Grid Power' feature. This value will be used when the inverter is reset to standard operations after grid charging. The standard value is 'false' and should only be changed if you know what you are doing."
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 0"
+          },
+          "children": [
+            {
+              "id": "battery_module_0_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_0_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 1"
+          },
+          "children": [
+            {
+              "id": "battery_module_1_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_1_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 2"
+          },
+          "children": [
+            {
+              "id": "battery_module_2_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_2_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 3"
+          },
+          "children": [
+            {
+              "id": "battery_module_3_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_3_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 4"
+          },
+          "children": [
+            {
+              "id": "battery_module_4_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_4_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 5"
+          },
+          "children": [
+            {
+              "id": "battery_module_5_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_5_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Module 6"
+          },
+          "children": [
+            {
+              "id": "battery_module_6_serial",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Serial Number"
+              }
+            },
+            {
+              "id": "battery_module_6_health",
+              "type": "label",
+              "value": "",
+              "label": {
+                "en": "Health Status"
+              }
+            }
+          ]
+        }
+      ],
+      "id": "rct-power-storage-dc"
+    },
+    {
+      "name": {
+        "en": "Solar Panel"
+      },
+      "class": "solarpanel",
+      "capabilities": [
+        "measure_power",
+        "meter_power"
+      ],
+      "energy": {
+        "meterPowerExportedCapability": "meter_power"
+      },
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/solar-panel/assets/images/small.png",
+        "large": "/drivers/solar-panel/assets/images/large.png",
+        "xlarge": "/drivers/solar-panel/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "enter_ip"
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "Connection"
+          },
+          "children": [
+            {
+              "id": "polling_interval",
+              "type": "number",
+              "label": {
+                "en": "Polling interval (seconds)"
+              },
+              "value": 60,
+              "min": 10,
+              "max": 3600
+            }
+          ]
+        }
+      ],
+      "id": "solar-panel"
+    }
+  ],
   "flow": {
     "triggers": [
       {
@@ -768,461 +1492,6 @@
       }
     ]
   },
-  "drivers": [
-    {
-      "name": {
-        "en": "RCT Power Storage DC"
-      },
-      "class": "solarpanel",
-      "capabilities": [
-        "measure_power",
-        "battery_power",
-        "solar_power",
-        "total_grid_power",
-        "load_household",
-        "measure_battery",
-        "battery_modus",
-        "soc_strategy"
-      ],
-      "capabilitiesOptions": {
-        "measure_power": {
-          "title": {
-            "en": "Inverter Power",
-            "nl": "Omvormer Vermogen",
-            "de": "Inverterleistung",
-            "fr": "Puissance Inverter",
-            "it": "Potenza Inverter",
-            "sv": "Inverter Effekt",
-            "no": "Inverter Effekt",
-            "es": "Potencia Inversor",
-            "da": "Invertereffekt",
-            "ru": "Мощность Инвертора",
-            "pl": "Moc Inwertera"
-          }
-        }
-      },
-      "energy": {
-        "batteries": [
-          "INTERNAL"
-        ]
-      },
-      "platforms": [
-        "local"
-      ],
-      "connectivity": [
-        "lan"
-      ],
-      "images": {
-        "small": "/drivers/rct-power-storage-dc/assets/images/small.png",
-        "large": "/drivers/rct-power-storage-dc/assets/images/large.png",
-        "xlarge": "/drivers/rct-power-storage-dc/assets/images/xlarge.png"
-      },
-      "pair": [
-        {
-          "id": "enter_ip",
-          "next": "list_devices"
-        },
-        {
-          "id": "list_devices",
-          "template": "list_devices",
-          "navigation": {
-            "prev": "enter_ip",
-            "next": "add_devices"
-          }
-        },
-        {
-          "id": "add_devices",
-          "template": "add_devices"
-        }
-      ],
-      "settings": [
-        {
-          "type": "group",
-          "label": {
-            "en": "RCT Power Storage DC"
-          },
-          "children": [
-            {
-              "id": "DeviceId",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_capacity",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Battery Capacity in kWh"
-              }
-            },
-            {
-              "id": "DeviceIP",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "IP Address"
-              }
-            },
-            {
-              "id": "DevicePort",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Port"
-              }
-            },
-            {
-              "id": "polling_interval",
-              "type": "number",
-              "value": 20,
-              "label": {
-                "en": "Polling interval in seconds"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Grid Charging Management"
-          },
-          "children": [
-            {
-              "id": "enable_inverter_management",
-              "type": "checkbox",
-              "value": false,
-              "label": {
-                "en": "Enable Grid Charging Management"
-              },
-              "hint": {
-                "en": "USE AT YOUR OWN RISK !!! - Activate features to manage inverter operation by sending commands and writing values to the inverter's memory. You as user are fully responsible for any harm or damage caused. Please feel free to review the source code on GitHub first before activating this feature."
-              }
-            },
-            {
-              "id": "max_grid_charge_power",
-              "type": "number",
-              "value": 6000,
-              "min": 0,
-              "max": 6000,
-              "units": "watts",
-              "label": {
-                "en": "Max Grid Charge Power (W)"
-              },
-              "hint": {
-                "en": "The maximum power in Watt the inverter is allowed to charge the battery from the grid."
-              }
-            },
-            {
-              "id": "default_max_grid_charge_power",
-              "type": "number",
-              "value": 0,
-              "min": 0,
-              "max": 6000,
-              "units": "watts",
-              "label": {
-                "en": "Default Max Grid Charge Power (W)"
-              },
-              "hint": {
-                "en": "Set the default maximum grid charging power in watts. This value will be used when the inverter is reset to standard operations after grid charging. The standard value is 0 watts and should only be changed if you know what you are doing."
-              }
-            },
-            {
-              "id": "default_soc_strategy",
-              "type": "dropdown",
-              "value": "Internal",
-              "label": {
-                "en": "Default SOC Strategy"
-              },
-              "values": [
-                {
-                  "id": "SOC",
-                  "label": {
-                    "en": "Maintain SOC",
-                    "nl": "SOC behouden",
-                    "de": "SOC halten",
-                    "fr": "Maintenir SOC",
-                    "it": "Mantieni SOC",
-                    "sv": "Behåll SOC",
-                    "no": "Behold SOC",
-                    "es": "Mantener SOC",
-                    "da": "Behold SOC",
-                    "ru": "Поддерживать SOC",
-                    "pl": "Utrzymuj SOC"
-                  }
-                },
-                {
-                  "id": "Constant",
-                  "label": {
-                    "en": "Constant",
-                    "nl": "Constante",
-                    "de": "Konstante",
-                    "fr": "Constante",
-                    "it": "Costante",
-                    "sv": "Konstant",
-                    "no": "Konstant",
-                    "es": "Constante",
-                    "da": "Konstant",
-                    "ru": "Константа",
-                    "pl": "Stała"
-                  }
-                },
-                {
-                  "id": "External",
-                  "label": {
-                    "en": "External",
-                    "nl": "Extern",
-                    "de": "Extern",
-                    "fr": "Externe",
-                    "it": "Esterno",
-                    "sv": "Extern",
-                    "no": "Ekstern",
-                    "es": "Externo",
-                    "da": "Ekstern",
-                    "ru": "Внешний",
-                    "pl": "Zewnętrzny"
-                  }
-                },
-                {
-                  "id": "Middle Voltage",
-                  "label": {
-                    "en": "Middle Voltage",
-                    "nl": "Middenspanning",
-                    "de": "Mittlere Spannung",
-                    "fr": "Tension Moyenne",
-                    "it": "Tensione Media",
-                    "sv": "Mellan Spänning",
-                    "no": "Mellomspenning",
-                    "es": "Voltaje Medio",
-                    "da": "Mellem Spænding",
-                    "ru": "Среднее Напряжение",
-                    "pl": "Średnie Napięcie"
-                  }
-                },
-                {
-                  "id": "Internal",
-                  "label": {
-                    "en": "Internal",
-                    "nl": "Intern",
-                    "de": "Intern",
-                    "fr": "Interne",
-                    "it": "Interno",
-                    "sv": "Intern",
-                    "no": "Intern",
-                    "es": "Interno",
-                    "da": "Intern",
-                    "ru": "Внутренний",
-                    "pl": "Wewnętrzny"
-                  }
-                },
-                {
-                  "id": "Schedule",
-                  "label": {
-                    "en": "Schedule",
-                    "nl": "Schema",
-                    "de": "Zeitplan",
-                    "fr": "Horaire",
-                    "it": "Programma",
-                    "sv": "Schema",
-                    "no": "Timeplan",
-                    "es": "Programa",
-                    "da": "Tidsplan",
-                    "ru": "Расписание",
-                    "pl": "Harmonogram"
-                  }
-                }
-              ],
-              "hint": {
-                "en": "Set the default SOC strategy for the inverter. The SOC strategy will be used when the inverter is reset to standard operations after grid charging. The standard value is 'Internal' and should only be changed if you know what you are doing."
-              }
-            },
-            {
-              "id": "default_use_grid_power_enabled",
-              "type": "checkbox",
-              "value": false,
-              "label": {
-                "en": "Default Use Grid Power Enabled"
-              },
-              "hint": {
-                "en": "Set the default value for the 'Use Grid Power' feature. This value will be used when the inverter is reset to standard operations after grid charging. The standard value is 'false' and should only be changed if you know what you are doing."
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 0"
-          },
-          "children": [
-            {
-              "id": "battery_module_0_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_0_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 1"
-          },
-          "children": [
-            {
-              "id": "battery_module_1_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_1_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 2"
-          },
-          "children": [
-            {
-              "id": "battery_module_2_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_2_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 3"
-          },
-          "children": [
-            {
-              "id": "battery_module_3_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_3_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 4"
-          },
-          "children": [
-            {
-              "id": "battery_module_4_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_4_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 5"
-          },
-          "children": [
-            {
-              "id": "battery_module_5_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_5_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Module 6"
-          },
-          "children": [
-            {
-              "id": "battery_module_6_serial",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Serial Number"
-              }
-            },
-            {
-              "id": "battery_module_6_health",
-              "type": "label",
-              "value": "",
-              "label": {
-                "en": "Health Status"
-              }
-            }
-          ]
-        }
-      ],
-      "id": "rct-power-storage-dc"
-    }
-  ],
   "capabilities": {
     "battery_modus": {
       "type": "enum",

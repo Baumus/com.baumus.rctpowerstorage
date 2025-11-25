@@ -1,16 +1,17 @@
 'use strict';
 
-const { Driver } = require('homey');
+const RCTDriver = require('../../lib/rct-driver');
 const Connection = require('../../lib/rctjavalib/connection');
 const { Identifier } = require('../../lib/rctjavalib/datagram');
 
-class MyDriver extends Driver {
+class MyDriver extends RCTDriver {
 
   /**
    * onInit is called when the driver is initialized.
    */
   async onInit() {
-    this.log('MyDriver has been initialized');
+    await super.onInit();
+    this.log('RCT Power Storage DC Driver initialized');
     this._socChangedTrigger = this.homey.flow.getDeviceTriggerCard('the-soc-has-changed');
 
     // Register the solar-power-greater-than condition card
@@ -76,7 +77,8 @@ class MyDriver extends Driver {
   }
 
   onPair(session) {
-    const devices = [];
+    let inverter = null;
+
     session.setHandler('validate', async (data) => {
       this.log('Validate new connection settings');
 
@@ -87,32 +89,33 @@ class MyDriver extends Driver {
 
         let strInverterSN = await connection.queryString(Identifier.INVERTER_SN);
         strInverterSN = strInverterSN.split('\x00').join('');
-        this.log('Inverter SN: ', strInverterSN);
+        this.log('Inverter SN:', strInverterSN);
 
-        const device = {
+        inverter = {
           name: 'RCT Power Storage DC',
-          data: {
-            id: strInverterSN,
-          },
-          settings: {
-            DeviceIP: data.host,
-            DevicePort: data.port,
-          },
+          data: { id: strInverterSN },
+          store: { address: data.host, port: data.port },
         };
-        this.log(device);
-        devices.push(device);
-        return 'ok';
+
+        connection.close();
+        this.log('Inverter found:', inverter);
+        return true;
       } catch (error) {
         this.error('Connection unsuccessful:', error);
-        return error;
-      } finally {
-        connection.close();
+        throw new Error('Unable to connect to device');
       }
     });
 
     session.setHandler('list_devices', async () => {
-      this.log('List devices started...');
-      return devices;
+      if (!inverter) return [];
+      
+      return [
+        {
+          name: inverter.name,
+          data: inverter.data,
+          store: inverter.store,
+        },
+      ];
     });
   }
 

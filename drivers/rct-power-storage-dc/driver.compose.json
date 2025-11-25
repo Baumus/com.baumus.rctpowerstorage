@@ -2,35 +2,134 @@
   "name": {
     "en": "RCT Power Storage DC"
   },
-  "class": "solarpanel",
+  "class": "battery",
   "capabilities": [
     "measure_power",
+    "measure_battery",
+    "meter_power.charged",
+    "meter_power.discharged",
     "battery_power",
+    "battery_modus",
+    "soc_strategy",
     "solar_power",
     "total_grid_power",
-    "load_household",
-    "measure_battery",
-    "battery_modus",
-    "soc_strategy"
+    "load_household"
   ],
   "capabilitiesOptions": {
     "measure_power": { 
       "title": {
-        "en": "Inverter Power",
-        "nl": "Omvormer Vermogen",
-        "de": "Inverterleistung",
-        "fr": "Puissance Inverter",
-        "it": "Potenza Inverter",
-        "sv": "Inverter Effekt",
-        "no": "Inverter Effekt",
-        "es": "Potencia Inversor",
-        "da": "Invertereffekt",
-        "ru": "Мощность Инвертора",
-        "pl": "Moc Inwertera"
+        "en": "Battery Power",
+        "nl": "Batterij Vermogen",
+        "de": "Batterieleistung",
+        "fr": "Puissance Batterie",
+        "it": "Potenza Batteria",
+        "sv": "Batteri Effekt",
+        "no": "Batteri Effekt",
+        "es": "Potencia Batería",
+        "da": "Batterieffekt",
+        "ru": "Мощность Батареи",
+        "pl": "Moc Baterii"
       }        
+    },
+    "meter_power.charged": {
+      "title": {
+        "en": "Charged Energy",
+        "nl": "Geladen Energie",
+        "de": "Geladene Energie",
+        "fr": "Énergie Chargée",
+        "it": "Energia Caricata",
+        "sv": "Laddad Energi",
+        "no": "Ladet Energi",
+        "es": "Energía Cargada",
+        "da": "Ladet Energi",
+        "ru": "Заряженная Энергия",
+        "pl": "Energia Naładowana"
+      }
+    },
+    "meter_power.discharged": {
+      "title": {
+        "en": "Discharged Energy",
+        "nl": "Ontladen Energie",
+        "de": "Entladene Energie",
+        "fr": "Énergie Déchargée",
+        "it": "Energia Scaricata",
+        "sv": "Urladdad Energi",
+        "no": "Utladet Energi",
+        "es": "Energía Descargada",
+        "da": "Afladet Energi",
+        "ru": "Разряженная Энергия",
+        "pl": "Energia Rozładowana"
+      }
+    },
+    "battery_power": {
+      "title": {
+        "en": "Battery Power (Legacy)",
+        "nl": "Batterij Vermogen (Legacy)",
+        "de": "Batterieleistung (Legacy)",
+        "fr": "Puissance Batterie (Legacy)",
+        "it": "Potenza Batteria (Legacy)",
+        "sv": "Batteri Effekt (Legacy)",
+        "no": "Batteri Effekt (Legacy)",
+        "es": "Potencia Batería (Legacy)",
+        "da": "Batterieffekt (Legacy)",
+        "ru": "Мощность Батареи (Legacy)",
+        "pl": "Moc Baterii (Legacy)"
+      },
+      "uiComponent": null
+    },
+    "solar_power": {
+      "title": {
+        "en": "Solar Power (Legacy)",
+        "nl": "Zonne-energie (Legacy)",
+        "de": "Solarleistung (Legacy)",
+        "fr": "Puissance Solaire (Legacy)",
+        "it": "Potenza Solare (Legacy)",
+        "sv": "Solenergi (Legacy)",
+        "no": "Solkraft (Legacy)",
+        "es": "Energía Solar (Legacy)",
+        "da": "Solenergi (Legacy)",
+        "ru": "Солнечная Энергия (Legacy)",
+        "pl": "Energia Słoneczna (Legacy)"
+      },
+      "uiComponent": null
+    },
+    "total_grid_power": {
+      "title": {
+        "en": "Grid Power (Legacy)",
+        "nl": "Netvermogen (Legacy)",
+        "de": "Netzleistung (Legacy)",
+        "fr": "Puissance Réseau (Legacy)",
+        "it": "Potenza Rete (Legacy)",
+        "sv": "Näteffekt (Legacy)",
+        "no": "Netteffekt (Legacy)",
+        "es": "Potencia Red (Legacy)",
+        "da": "Neteffekt (Legacy)",
+        "ru": "Мощность Сети (Legacy)",
+        "pl": "Moc Sieci (Legacy)"
+      },
+      "uiComponent": null
+    },
+    "load_household": {
+      "title": {
+        "en": "Household Load (Legacy)",
+        "nl": "Huishoudelijk Verbruik (Legacy)",
+        "de": "Haushaltsverbrauch (Legacy)",
+        "fr": "Charge Domestique (Legacy)",
+        "it": "Carico Domestico (Legacy)",
+        "sv": "Hushållsbelastning (Legacy)",
+        "no": "Husholdningsbelastning (Legacy)",
+        "es": "Carga Doméstica (Legacy)",
+        "da": "Husholdningsbelastning (Legacy)",
+        "ru": "Домашняя Нагрузка (Legacy)",
+        "pl": "Obciążenie Gospodarstwa (Legacy)"
+      },
+      "uiComponent": null
     }
   },
   "energy": {
+    "homeBattery": true,
+    "meterPowerImportedCapability": "meter_power.charged",
+    "meterPowerExportedCapability": "meter_power.discharged",
     "batteries": [
       "INTERNAL"
     ]
@@ -48,14 +147,12 @@
   },
   "pair": [
     {
-      "id": "enter_ip",
-      "next": "list_devices"
+      "id": "enter_ip"
     },
     {
       "id": "list_devices",
       "template": "list_devices",
       "navigation": {
-        "prev": "enter_ip",
         "next": "add_devices"
       }
     },
