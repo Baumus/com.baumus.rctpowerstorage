@@ -76,5 +76,8 @@
   },
   "3.0.0": {
     "en": "feat: complete Homey Energy compliance refactor"
+  },
+  "3.0.1": {
+    "en": "fix: register flow action cards"
   }
 }
