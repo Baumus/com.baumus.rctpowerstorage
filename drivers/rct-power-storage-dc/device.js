@@ -158,27 +158,27 @@ class MyDevice extends RCTDevice {
 
       // Calculate cumulative energy separately for charging and discharging
       if (timeDeltaHours > 0) {
-        const avgPower = (batteryPowerRaw + this._lastBatteryPower) / 2;
+        const avgPower = (batteryPowerHomey + this._lastBatteryPower) / 2;
         const energyDelta = Math.abs(avgPower * timeDeltaHours) / 1000; // Convert Wh to kWh
         
-        // RCT convention: negative = discharging, positive = charging
-        if (avgPower < 0) {
-          // Battery is discharging (providing power to home)
-          const currentDischarged = this.getCapabilityValue('meter_power.discharged') || 0;
-          const newDischarged = currentDischarged + energyDelta;
-          await this.setCapabilityValue('meter_power.discharged', newDischarged);
-          this.log(`Discharged: ${energyDelta.toFixed(3)} kWh, Total discharged: ${newDischarged.toFixed(2)} kWh`);
-        } else if (avgPower > 0) {
+        // Homey convention: positive = charging (consuming), negative = discharging (delivering)
+        if (avgPower > 0) {
           // Battery is charging (consuming power)
           const currentCharged = this.getCapabilityValue('meter_power.charged') || 0;
           const newCharged = currentCharged + energyDelta;
           await this.setCapabilityValue('meter_power.charged', newCharged);
           this.log(`Charged: ${energyDelta.toFixed(3)} kWh, Total charged: ${newCharged.toFixed(2)} kWh`);
+        } else if (avgPower < 0) {
+          // Battery is discharging (delivering power to home)
+          const currentDischarged = this.getCapabilityValue('meter_power.discharged') || 0;
+          const newDischarged = currentDischarged + energyDelta;
+          await this.setCapabilityValue('meter_power.discharged', newDischarged);
+          this.log(`Discharged: ${energyDelta.toFixed(3)} kWh, Total discharged: ${newDischarged.toFixed(2)} kWh`);
         }
       }
 
-      // Store for next calculation
-      this._lastBatteryPower = batteryPowerRaw;
+      // Store for next calculation (in Homey convention!)
+      this._lastBatteryPower = batteryPowerHomey;
       this._lastUpdate = now;
 
       // Trigger flow card with Homey convention value
