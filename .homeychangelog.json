@@ -79,5 +79,8 @@
   },
   "3.0.1": {
     "en": "fix: register flow action cards"
+  },
+  "3.0.2": {
+    "en": "fix: meter_power logic"
   }
 }
