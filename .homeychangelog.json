@@ -82,5 +82,8 @@
   },
   "3.0.2": {
     "en": "fix: meter_power logic"
+  },
+  "4.0.0": {
+    "en": "added: energy-optimizer device"
   }
 }
