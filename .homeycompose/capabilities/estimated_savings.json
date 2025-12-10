@@ -1,0 +1,23 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Estimated Savings",
+    "nl": "Geschatte Besparing",
+    "de": "Geschätzte Ersparnis",
+    "fr": "Économies Estimées",
+    "it": "Risparmi Stimati",
+    "sv": "Uppskattad Besparing",
+    "no": "Estimert Besparelse",
+    "es": "Ahorros Estimados",
+    "da": "Anslået Besparelse",
+    "ru": "Ожидаемая Экономия",
+    "pl": "Szacowane Oszczędności"
+  },
+  "units": {
+    "en": "€"
+  },
+  "decimals": 2,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor"
+}

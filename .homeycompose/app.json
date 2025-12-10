@@ -35,5 +35,21 @@
   "bugs": {
     "url": "https://github.com/Baumus/com.baumus.rctpowerstorage/issues"
   },
-  "source": "https://github.com/Baumus/com.baumus.rctpowerstorage"
+  "source": "https://github.com/Baumus/com.baumus.rctpowerstorage",
+  "api": {
+    "getDevices": {
+      "method": "GET",
+      "path": "/devices"
+    },
+    "getDevice": {
+      "method": "GET",
+      "path": "/device/:deviceId"
+    },
+    "getDeviceStrategy": {
+      "method": "GET",
+      "path": "/device/:deviceId/strategy"
+    }
+  },
+  "homeyCommunityTopicId": 0,
+  "support": "https://github.com/Baumus/com.baumus.rctpowerstorage"
 }

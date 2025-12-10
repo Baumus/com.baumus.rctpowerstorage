@@ -1,1 +1,31 @@
-{}
+{
+  "error": {
+    "missing_token": "Tibber API token is missing",
+    "missing_home_id": "Tibber Home ID is missing",
+    "missing_battery_id": "Battery device ID is missing",
+    "battery_not_found": "Battery device not found",
+    "home_not_found": "Tibber home not found"
+  },
+  "status": {
+    "initializing": "Initializing...",
+    "starting": "Starting...",
+    "active": "Active",
+    "stopped": "Stopped",
+    "error_config": "Configuration Error",
+    "error": "Error",
+    "fetching_prices": "Fetching prices...",
+    "charging": "Charging",
+    "monitoring": "Monitoring",
+    "not_scheduled": "Not scheduled",
+    "no_data": "No price data",
+    "no_expensive_periods": "No expensive periods found",
+    "no_cheap_slots": "No cheap time slots available",
+    "discharging": "Discharging"
+  },
+  "timeline": {
+    "charging": "Battery charging from grid",
+    "discharging": "Battery discharging to grid",
+    "normal_solar": "Battery charging from solar excess",
+    "normal_hold": "Battery discharge disabled"
+  }
+}

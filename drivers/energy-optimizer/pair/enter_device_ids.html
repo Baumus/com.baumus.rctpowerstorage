@@ -1,0 +1,119 @@
+<script type="text/javascript">
+    Homey.setTitle("Select Devices");
+
+    let availableDevices = {
+        battery: [],
+        solar: [],
+        grid: []
+    };
+
+    // Load available devices when page loads
+    (async function() {
+        try {
+            console.log('Loading available devices...');
+            const result = await Homey.emit('get_available_devices');
+            console.log('Received devices:', result);
+            
+            availableDevices = result;
+            
+            // Populate battery dropdown
+            const batterySelect = document.getElementById('battery_id');
+            if (availableDevices.battery.length > 0) {
+                availableDevices.battery.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.name;
+                    batterySelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '-- No battery devices found --';
+                batterySelect.appendChild(option);
+            }
+            
+            // Populate solar dropdown
+            const solarSelect = document.getElementById('solar_id');
+            if (availableDevices.solar.length > 0) {
+                availableDevices.solar.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.name;
+                    solarSelect.appendChild(option);
+                });
+            }
+            
+            // Populate grid dropdown
+            const gridSelect = document.getElementById('grid_id');
+            if (availableDevices.grid.length > 0) {
+                availableDevices.grid.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.textContent = device.name;
+                    gridSelect.appendChild(option);
+                });
+            }
+            
+            console.log('Dropdowns populated successfully');
+        } catch (error) {
+            console.error('Error loading devices:', error);
+            Homey.alert('Error loading devices: ' + error.message);
+        }
+    })();
+
+    function doSubmit(){
+        let batteryId = document.getElementById('battery_id').value;
+        let solarId = document.getElementById('solar_id').value;
+        let gridId = document.getElementById('grid_id').value;
+
+        if(!batteryId){
+            Homey.alert('Please select a battery device');
+        }
+        else {
+            Homey.emit('validate', {
+                "battery_device_id": batteryId,
+                "solar_device_id": solarId || '',
+                "grid_device_id": gridId || ''
+            })
+                .then(result => {
+                    if (result === true) {
+                        Homey.nextView();
+                    } else {
+                        Homey.alert('Invalid device configuration');
+                    }
+                })
+                .catch(error => {
+                    Homey.alert(error.message || 'Unable to validate devices');
+                });
+        }
+    }
+
+</script>
+
+<form class="homey-form">
+    <div class="homey-form-group">
+        <label class="homey-form-label" for="battery_id">Battery Device (required)</label>
+        <select class="homey-form-select" id="battery_id" name="battery_id" required>
+            <option value="">-- Select Battery Device --</option>
+        </select>
+        <p class="homey-form-hint">Select your RCT Power Storage DC device</p>
+    </div>
+
+    <div class="homey-form-group">
+        <label class="homey-form-label" for="solar_id">Solar Panel Device (optional)</label>
+        <select class="homey-form-select" id="solar_id" name="solar_id">
+            <option value="">-- None --</option>
+        </select>
+        <p class="homey-form-hint">Select your Solar Panel device (optional)</p>
+    </div>
+
+    <div class="homey-form-group">
+        <label class="homey-form-label" for="grid_id">Grid Meter Device (optional)</label>
+        <select class="homey-form-select" id="grid_id" name="grid_id">
+            <option value="">-- None --</option>
+        </select>
+        <p class="homey-form-hint">Select your Grid Meter device (optional)</p>
+    </div>
+
+    <button type="button" class="homey-button-primary" onclick="doSubmit()">Continue</button>
+</form>

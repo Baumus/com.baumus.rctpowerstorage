@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        
+        .homey-view {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .device-selector {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: var(--homey-background-highlight);
+            border-radius: 8px;
+        }
+        
+        .device-selector h2 {
+            margin-top: 0;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .device-button {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: var(--homey-background);
+            border: 2px solid var(--homey-divider);
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s;
+        }
+        
+        .device-button:hover {
+            border-color: var(--homey-text-highlight);
+            background: var(--homey-background-highlight);
+        }
+        
+        .device-button.active {
+            border-color: var(--homey-text-highlight);
+            background: var(--homey-background-highlight);
+        }
+        
+        .device-name {
+            font-weight: 600;
+            font-size: 16px;
+            color: var(--homey-text);
+            margin-bottom: 4px;
+        }
+        
+        .device-status {
+            font-size: 13px;
+            color: var(--homey-text-secondary);
+        }
+        
+        .homey-card {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--homey-background);
+            border-radius: 8px;
+            border: 1px solid var(--homey-divider);
+        }
+        
+        .homey-card h2 {
+            margin-top: 0;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .status-grid {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--homey-background-highlight);
+            border-radius: 8px;
+        }
+        
+        .status-item.active {
+            border-left: 4px solid var(--homey-text-highlight);
+        }
+        
+        .status-item.charging {
+            border-left: 4px solid #FFA500;
+        }
+        
+        .status-label {
+            font-weight: 500;
+            color: var(--homey-text-secondary);
+        }
+        
+        .status-value {
+            font-weight: 600;
+            color: var(--homey-text);
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        
+        .info-item {
+            text-align: center;
+            padding: 16px;
+            background: var(--homey-background-highlight);
+            border-radius: 8px;
+        }
+        
+        .info-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--homey-text-highlight);
+            margin-bottom: 4px;
+        }
+        
+        .info-label {
+            font-size: 11px;
+            color: var(--homey-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .timeline {
+            margin-top: 12px;
+        }
+        
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: var(--homey-background-highlight);
+            border-radius: 6px;
+            border-left: 3px solid var(--homey-divider);
+        }
+        
+        .timeline-item.cheap {
+            border-left-color: var(--homey-text-highlight);
+        }
+        
+        .timeline-item.expensive {
+            border-left-color: #ff4444;
+        }
+        
+        .timeline-time {
+            font-weight: 600;
+            min-width: 120px;
+            font-size: 13px;
+            color: var(--homey-text);
+        }
+        
+        .timeline-price {
+            flex: 1;
+            text-align: center;
+            color: var(--homey-text-secondary);
+            font-size: 13px;
+        }
+        
+        .timeline-action {
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--homey-text-highlight);
+        }
+        
+        .timeline-action.discharge {
+            color: #ff4444;
+        }
+        
+        .chart-container {
+            margin-top: 16px;
+            height: 240px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            position: relative;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow-x: auto;
+        }
+        
+        .chart-wrapper {
+            display: flex;
+            flex: 1;
+            gap: 8px;
+            min-width: 1000px;
+        }
+        
+        .chart-y-axis {
+            position: relative;
+            min-width: 55px;
+            padding-right: 8px;
+            font-size: 11px;
+            color: var(--homey-text-secondary);
+        }
+        
+        .chart-y-label {
+            text-align: right;
+            white-space: nowrap;
+        }
+        
+        .chart-bars-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chart-bars {
+            display: flex;
+            align-items: flex-end;
+            flex: 1;
+            gap: 1px;
+            position: relative;
+        }
+        
+        .chart-avg-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 2px dashed #000000;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+        
+        .chart-avg-label {
+            position: absolute;
+            right: 4px;
+            top: -10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        
+        .chart-x-axis {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+            font-size: 11px;
+            color: var(--homey-text-secondary);
+            padding: 0 2px;
+        }
+        
+        .chart-bar {
+            flex: 1;
+            background: #888;
+            opacity: 0.7;
+            border-radius: 2px 2px 0 0;
+            position: relative;
+            transition: opacity 0.2s;
+            min-height: 20%;
+        }
+        
+        .chart-bar:hover {
+            opacity: 1;
+        }
+        
+        .chart-bar.cheap {
+            background: #00a0ff;
+            opacity: 0.9;
+        }
+        
+        .chart-bar.expensive {
+            background: #ff4444;
+            opacity: 0.7;
+        }
+        
+        .chart-bar.charging {
+            background: #FFD700;
+            opacity: 1;
+        }
+        
+        .homey-button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 12px;
+            background: var(--homey-text-highlight);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        .homey-button:hover {
+            opacity: 0.8;
+        }
+        
+        .homey-button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--homey-text-secondary);
+        }
+        
+        .error {
+            background: rgba(255, 68, 68, 0.1);
+            color: #ff4444;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #ff4444;
+            margin-top: 12px;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 24px;
+            color: var(--homey-text-secondary);
+            font-style: italic;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--homey-text);
+            margin: 16px 0 8px 0;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--homey-text-secondary);
+        }
+        
+        .empty-state h3 {
+            margin: 0 0 8px 0;
+            font-size: 18px;
+            color: var(--homey-text);
+        }
+    </style>
+</head>
+<body>
+    <div class="homey-view">
+        <div class="device-selector">
+            <h2>Energy Optimizer Devices</h2>
+            <div id="deviceList"></div>
+        </div>
+        
+        <div id="selectedDeviceContainer" style="display: none;">
+            <div id="loading" class="loading">Loading optimizer data...</div>
+            
+            <div id="content" style="display: none;">
+                <!-- Current Status -->
+                <div class="homey-card">
+                    <h2>Current Status</h2>
+                    <div id="statusContainer" class="status-grid"></div>
+                    <button id="refreshBtn" class="homey-button">Refresh Data</button>
+                </div>
+                
+                <!-- Statistics -->
+                <div class="homey-card">
+                    <h2>Statistics</h2>
+                    <div id="statsContainer"></div>
+                </div>
+                
+                <!-- Price Chart -->
+                <div class="homey-card">
+                    <h2>Price Chart (Available Data)</h2>
+                    <div id="priceChart" class="chart-container">
+                        <div class="chart-wrapper">
+                            <div class="chart-y-axis" id="chartYAxis"></div>
+                            <div class="chart-bars-container">
+                                <div class="chart-bars" id="chartBars"></div>
+                                <div class="chart-x-axis" id="chartXAxis"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Optimization Plan -->
+                <div class="homey-card">
+                    <h2>Optimization Plan</h2>
+                    <div id="timelineContainer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let selectedDeviceId = null;
+        let strategy;
+        let priceCache = [];
+        let homeyInstance;
+        let autoRefreshInterval = null;
+        
+        function onHomeyReady(homey) {
+            homey.ready();
+            homeyInstance = homey;
+            
+            loadDeviceList(homey);
+        }
+        
+        async function loadDeviceList(homey) {
+            try {
+                // Get devices via API instead of homey.getDevices()
+                const result = await homey.api('GET', '/devices');
+                
+                // Filter for energy-optimizer devices
+                const optimizerDevices = result.devices.filter(d => 
+                    d.driverId === 'energy-optimizer'
+                );
+                
+                const deviceList = document.getElementById('deviceList');
+                
+                if (optimizerDevices.length === 0) {
+                    deviceList.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No Energy Optimizer devices found</h3>
+                            <p>Add an Energy Optimizer device to view its optimization data.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                deviceList.innerHTML = optimizerDevices.map(device => `
+                    <button class="device-button" data-device-id="${device.id}">
+                        <div class="device-name">${device.name}</div>
+                        <div class="device-status">
+                            ${device.status || 'Unknown'}
+                        </div>
+                    </button>
+                `).join('');
+                
+                // Add click handlers
+                document.querySelectorAll('.device-button').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const deviceId = btn.getAttribute('data-device-id');
+                        selectDevice(deviceId);
+                        
+                        // Update active state
+                        document.querySelectorAll('.device-button').forEach(b => 
+                            b.classList.remove('active')
+                        );
+                        btn.classList.add('active');
+                    });
+                });
+                
+                // Auto-select first device
+                if (optimizerDevices.length > 0) {
+                    selectDevice(optimizerDevices[0].id);
+                    document.querySelector('.device-button').classList.add('active');
+                }
+                
+            } catch (error) {
+                console.error('Error loading devices:', error);
+                document.getElementById('deviceList').innerHTML = `
+                    <div class="error">Error loading devices: ${error.message}</div>
+                `;
+            }
+        }
+        
+        function selectDevice(deviceId) {
+            selectedDeviceId = deviceId;
+            document.getElementById('selectedDeviceContainer').style.display = 'block';
+            
+            // Clear any existing auto-refresh
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            // Load data immediately
+            loadOptimizerData();
+            
+            // Setup auto-refresh every 60 seconds to catch battery SoC updates
+            autoRefreshInterval = setInterval(() => {
+                console.log('Auto-refreshing optimizer data...');
+                loadOptimizerData();
+            }, 60 * 1000); // Refresh every 60 seconds
+            
+            // Setup refresh button
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.onclick = () => loadOptimizerData();
+        }
+        
+        async function loadOptimizerData() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = 'Loading...';
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+            
+            try {
+                // Get device data via API
+                const deviceResult = await homeyInstance.api('GET', `/device/${selectedDeviceId}`);
+                const device = deviceResult.device;
+                
+                if (!device) {
+                    throw new Error('Device not found');
+                }
+                
+                // Get strategy data from API
+                try {
+                    const result = await homeyInstance.api('GET', `/device/${selectedDeviceId}/strategy`);
+                    console.log('Strategy result:', result);
+                    strategy = result.strategy || {};
+                    priceCache = result.priceCache || [];
+                    console.log('Price cache length:', priceCache.length);
+                    console.log('Strategy:', strategy);
+                } catch (apiError) {
+                    console.log('Strategy API not available, using limited data', apiError);
+                    strategy = {};
+                    priceCache = [];
+                }
+                
+                // Render all sections
+                renderStatus(device);
+                renderStats(device, strategy);
+                renderPriceChart(strategy, priceCache);
+                renderTimeline(strategy);
+                
+                // Show content
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="error">
+                        Error loading optimizer data: ${error.message}
+                    </div>
+                `;
+            } finally {
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.textContent = 'Refresh Data';
+                }
+            }
+        }
+        
+        function renderStatus(device) {
+            const status = device.capabilities?.optimizer_status || 'Unknown';
+            const nextCharge = device.capabilities?.next_charge_start || '-';
+            const isEnabled = device.capabilities?.onoff || false;
+            const isCharging = status.toLowerCase().includes('charg');
+            
+            const html = `
+                <div class="status-item ${isEnabled ? (isCharging ? 'charging' : 'active') : ''}">
+                    <span class="status-label">Optimizer:</span>
+                    <span class="status-value">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span class="status-value">${status}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Next Charge:</span>
+                    <span class="status-value">${nextCharge}</span>
+                </div>
+            `;
+            
+            document.getElementById('statusContainer').innerHTML = html;
+        }
+        
+        function renderStats(device, strategy) {
+            const savings = device.capabilities?.estimated_savings || 0;
+            const chargeIntervals = strategy.chargeIntervals?.length || 0;
+            const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
+            const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
+            const neededKWh = strategy.neededKWh ? strategy.neededKWh.toFixed(2) : '-';
+            
+            const html = `
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-value">€${savings.toFixed(2)}</div>
+                        <div class="info-label">Est. Savings</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-value">${chargeIntervals}</div>
+                        <div class="info-label">Charge Slots</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-value">${expensiveIntervals}</div>
+                        <div class="info-label">Exp. Periods</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-value">${avgPrice}</div>
+                        <div class="info-label">Avg €/kWh</div>
+                    </div>
+                    ${neededKWh !== '-' ? `
+                    <div class="info-item">
+                        <div class="info-value">${neededKWh}</div>
+                        <div class="info-label">Needed kWh</div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            document.getElementById('statsContainer').innerHTML = html;
+        }
+        
+        function renderPriceChart(strategy, priceCache) {
+            console.log('=== renderPriceChart START ===');
+            const chartBars = document.getElementById('chartBars');
+            const chartYAxis = document.getElementById('chartYAxis');
+            const chartXAxis = document.getElementById('chartXAxis');
+            
+            if (!priceCache || priceCache.length === 0) {
+                chartBars.innerHTML = '<div class="no-data">No price data available</div>';
+                chartYAxis.innerHTML = '';
+                chartXAxis.innerHTML = '';
+                return;
+            }
+            
+            // Get all available intervals (from 14:00 today until 23:45 tomorrow)
+            const availableIntervals = priceCache;
+            
+            if (availableIntervals.length === 0) {
+                chartBars.innerHTML = '<div class="no-data">No upcoming price data</div>';
+                chartYAxis.innerHTML = '';
+                chartXAxis.innerHTML = '';
+                return;
+            }
+            
+            // Find min/max for scaling
+            const prices = availableIntervals.map(p => p.total);
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const priceRange = maxPrice - minPrice;
+            
+            // Render Y-axis (price scale)
+            // Y-axis should match the bar heights (20-100% range)
+            const yAxisSteps = 5;
+            let yAxisHtml = '';
+            for (let i = yAxisSteps; i >= 0; i--) {
+                const price = minPrice + (priceRange * i / yAxisSteps);
+                // Position labels to match the 20-100% range used by bars
+                const position = (i / yAxisSteps) * 80 + 20;
+                yAxisHtml += `<div class="chart-y-label" style="position: absolute; bottom: ${position}%; transform: translateY(50%);">€${price.toFixed(3)}</div>`;
+            }
+            chartYAxis.innerHTML = yAxisHtml;
+            
+            // Create sets of startsAt timestamps for quick lookup
+            const chargeTimestamps = new Set(
+                (strategy?.chargeIntervals || []).map(s => s.startsAt)
+            );
+            const expensiveTimestamps = new Set(
+                (strategy?.expensiveIntervals || []).map(s => s.startsAt)
+            );
+            
+            console.log('Strategy info:', {
+                hasStrategy: !!strategy,
+                chargeCount: strategy?.chargeIntervals?.length || 0,
+                expensiveCount: strategy?.expensiveIntervals?.length || 0,
+                cheapThreshold: strategy?.cheapThreshold,
+                avgPrice: strategy?.avgPrice,
+                firstChargeTime: strategy?.chargeIntervals?.[0]?.startsAt,
+                firstExpensiveTime: strategy?.expensiveIntervals?.[0]?.startsAt
+            });
+            
+            // Use avgPrice or calculate it if not available
+            const avgPrice = strategy?.avgPrice || (prices.reduce((sum, p) => sum + p, 0) / prices.length);
+            const cheapThreshold = strategy?.cheapThreshold || avgPrice * 0.9;
+            const expensiveThreshold = strategy?.expensiveThreshold || avgPrice * 1.1;
+            
+            console.log('Thresholds:', { avgPrice, cheapThreshold, expensiveThreshold });
+            
+            // Create bars
+            let html = '';
+            availableIntervals.forEach((priceData, i) => {
+                const normalizedHeight = priceRange > 0 
+                    ? ((priceData.total - minPrice) / priceRange) * 80 + 20 
+                    : 50;
+                
+                let barClass = 'chart-bar';
+                
+                // Check by timestamp instead of index
+                if (chargeTimestamps.has(priceData.startsAt)) {
+                    barClass += ' charging';
+                } else if (expensiveTimestamps.has(priceData.startsAt)) {
+                    barClass += ' expensive';
+                } else if (priceData.total <= cheapThreshold) {
+                    barClass += ' cheap';
+                } else if (priceData.total >= expensiveThreshold) {
+                    barClass += ' expensive';
+                }
+                
+                html += `<div class="${barClass}" style="height: ${normalizedHeight}%" title="${new Date(priceData.startsAt).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})}: €${priceData.total.toFixed(4)}/kWh"></div>`;
+            });
+            
+            chartBars.innerHTML = html;
+            
+            // Add average price line
+            const avgLinePosition = priceRange > 0
+                ? ((avgPrice - minPrice) / priceRange) * 80 + 20
+                : 50;
+            
+            const avgLine = document.createElement('div');
+            avgLine.className = 'chart-avg-line';
+            avgLine.style.bottom = `${avgLinePosition}%`;
+            
+            const avgLabel = document.createElement('div');
+            avgLabel.className = 'chart-avg-label';
+            avgLabel.textContent = `Ø €${avgPrice.toFixed(3)}`;
+            avgLine.appendChild(avgLabel);
+            
+            chartBars.appendChild(avgLine);
+            
+            // Render X-axis (time labels) - show every 6 hours (24 intervals)
+            let xAxisHtml = '';
+            const timeLabels = [];
+            for (let i = 0; i < availableIntervals.length; i += 24) {
+                const time = new Date(availableIntervals[i].startsAt);
+                timeLabels.push(time.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+            }
+            // Add last label
+            if (availableIntervals.length > 0) {
+                const lastTime = new Date(availableIntervals[availableIntervals.length - 1].startsAt);
+                timeLabels.push(lastTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+            }
+            
+            xAxisHtml = timeLabels.map(label => `<span>${label}</span>`).join('');
+            chartXAxis.innerHTML = xAxisHtml;
+        }
+        
+        function renderTimeline(strategy) {
+            const container = document.getElementById('timelineContainer');
+            
+            if (!strategy || (!strategy.chargeIntervals && !strategy.expensiveIntervals)) {
+                container.innerHTML = '<div class="no-data">No optimization plan available</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            // Battery Status Section (NEW)
+            if (strategy.batteryStatus) {
+                const bat = strategy.batteryStatus;
+                const socPercent = (bat.currentSoc * 100).toFixed(1);
+                const targetPercent = (bat.targetSoc * 100).toFixed(1);
+                const availableKWh = bat.availableCapacity.toFixed(2);
+                const batteryFull = bat.currentSoc >= bat.targetSoc;
+                
+                html += `
+                    <div class="section-title">🔋 Battery Status</div>
+                    <div class="status-item ${batteryFull ? 'charging' : 'active'}" style="margin-bottom: 16px;">
+                        <div style="width: 100%;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span class="status-label">Current SoC:</span>
+                                <span class="status-value">${socPercent}% (Target: ${targetPercent}%)</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span class="status-label">Available Capacity:</span>
+                                <span class="status-value">${availableKWh} kWh ${batteryFull ? '⚠️ Battery already at target' : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Display battery energy cost information
+                if (bat.energyCost) {
+                    const cost = bat.energyCost;
+                    html += `
+                        <div class="status-item" style="margin-bottom: 16px;">
+                            <div style="width: 100%;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span class="status-label">💰 Avg. Battery Energy Cost (Actual):</span>
+                                    <span class="status-value">${cost.avgPrice.toFixed(4)} €/kWh</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #888; margin-top: 4px;">
+                                    <span>☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)</span>
+                                    <span>⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (strategy.chargeIntervals && strategy.chargeIntervals.length > 0) {
+                    // Show planned charge price if no historical data yet
+                    const avgPlannedPrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
+                    html += `
+                        <div class="status-item" style="margin-bottom: 16px;">
+                            <div style="width: 100%;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span class="status-label">💰 Planned Charge Price:</span>
+                                    <span class="status-value">${avgPlannedPrice.toFixed(4)} €/kWh</span>
+                                </div>
+                                <div style="font-size: 0.9em; color: #888; margin-top: 4px;">
+                                    Based on ${strategy.chargeIntervals.length} planned charging intervals
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                `;
+            }
+            
+            // Charge intervals
+            if (strategy.chargeIntervals && strategy.chargeIntervals.length > 0) {
+                // Debug: Show first charge interval info
+                const firstInterval = strategy.chargeIntervals[0];
+                const firstTime = new Date(firstInterval.startsAt);
+                const firstTimeStr = firstTime.toLocaleString('de-DE', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                html += `
+                    <div class="status-item active" style="margin-bottom: 16px;">
+                        <span class="status-label">🔍 First Charge (from strategy):</span>
+                        <span class="status-value">${firstTimeStr}</span>
+                    </div>
+                `;
+                
+                html += '<div class="section-title">🔋 Planned Charging</div>';
+                html += '<div class="timeline">';
+                
+                const displayIntervals = strategy.chargeIntervals.slice(0, 12);
+                const energyPerInterval = 1.5; // 6kW * 0.25h = 1.5 kWh per interval
+                
+                displayIntervals.forEach(interval => {
+                    const time = new Date(interval.startsAt);
+                    const timeStr = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = time.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+                    const price = interval.total.toFixed(4);
+                    
+                    html += `
+                        <div class="timeline-item cheap">
+                            <span class="timeline-time">${dateStr} ${timeStr}</span>
+                            <span class="timeline-price">${price} €/kWh</span>
+                            <span class="timeline-action">⚡ Charge +${energyPerInterval.toFixed(1)} kWh</span>
+                        </div>
+                    `;
+                });
+                
+                if (strategy.chargeIntervals.length > 12) {
+                    const remainingIntervals = strategy.chargeIntervals.length - 12;
+                    const remainingEnergy = remainingIntervals * energyPerInterval;
+                    html += `<div class="no-data">... and ${remainingIntervals} more intervals (+${remainingEnergy.toFixed(1)} kWh)</div>`;
+                }
+                
+                // Add total charging summary
+                const totalChargeEnergy = strategy.chargeIntervals.length * energyPerInterval;
+                const avgChargePrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
+                const totalChargeCost = totalChargeEnergy * avgChargePrice;
+                
+                html += `
+                    <div class="status-item" style="margin-top: 12px;">
+                        <span class="status-label">Total Charging:</span>
+                        <span class="status-value">${totalChargeEnergy.toFixed(1)} kWh @ avg ${avgChargePrice.toFixed(4)} €/kWh = €${totalChargeCost.toFixed(2)}</span>
+                    </div>
+                `;
+                
+                html += '</div>';
+            } else {
+                html += '<div class="section-title">🔋 Planned Charging</div>';
+                html += '<div class="no-data">No cheap charging slots found - will use grid directly</div>';
+            }
+            
+            // Expensive intervals (discharge)
+            const dischargeIntervals = strategy.dischargeIntervals || strategy.expensiveIntervals || [];
+            if (dischargeIntervals.length > 0) {
+                html += '<div class="section-title">⚠️ Expensive Periods (Use Battery)</div>';
+                html += '<div class="timeline">';
+                
+                const displayIntervals = dischargeIntervals.slice(0, 12);
+                
+                displayIntervals.forEach(interval => {
+                    const time = new Date(interval.startsAt);
+                    const timeStr = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = time.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+                    const price = interval.total.toFixed(4);
+                    const demand = interval.demandKWh || 0;
+                    
+                    html += `
+                        <div class="timeline-item expensive">
+                            <span class="timeline-time">${dateStr} ${timeStr}</span>
+                            <span class="timeline-price">${price} €/kWh</span>
+                            <span class="timeline-action discharge">🔋 Use Battery -${demand.toFixed(2)} kWh</span>
+                        </div>
+                    `;
+                });
+                
+                if (dischargeIntervals.length > 12) {
+                    html += `<div class="no-data">... and ${dischargeIntervals.length - 12} more intervals</div>`;
+                }
+                
+                // Add discharge summary with savings calculation
+                const forecastedDemand = strategy.forecastedDemand || 0;
+                const avgExpensivePrice = dischargeIntervals.reduce((sum, i) => sum + i.total, 0) / dischargeIntervals.length;
+                const batteryUsageCost = forecastedDemand * (strategy.chargeIntervals && strategy.chargeIntervals.length > 0
+                    ? strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length 
+                    : avgExpensivePrice);
+                const gridUsageCost = forecastedDemand * avgExpensivePrice;
+                const savings = gridUsageCost - batteryUsageCost;
+                
+                html += `
+                    <div class="status-item" style="margin-top: 12px;">
+                        <span class="status-label">Forecasted Demand:</span>
+                        <span class="status-value">${forecastedDemand.toFixed(1)} kWh @ avg ${avgExpensivePrice.toFixed(4)} €/kWh</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Without Battery:</span>
+                        <span class="status-value">€${gridUsageCost.toFixed(2)}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">With Battery:</span>
+                        <span class="status-value">€${batteryUsageCost.toFixed(2)}</span>
+                    </div>
+                    <div class="status-item active">
+                        <span class="status-label">Estimated Savings:</span>
+                        <span class="status-value">€${Math.max(0, savings).toFixed(2)}</span>
+                    </div>
+                `;
+                
+                html += '</div>';
+            }
+            
+            if (!html) {
+                html = '<div class="no-data">No timeline data available</div>';
+            }
+            
+            container.innerHTML = html;
+        }
+    </script>
+    <script src="/homey.js" data-origin="settings"></script>
+</body>
+</html>

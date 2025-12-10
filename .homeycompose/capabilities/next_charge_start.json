@@ -1,0 +1,19 @@
+{
+  "type": "string",
+  "title": {
+    "en": "Next Charge Start",
+    "nl": "Volgende Laadstart",
+    "de": "Nächster Ladestart",
+    "fr": "Prochain Début de Charge",
+    "it": "Prossimo Inizio Carica",
+    "sv": "Nästa Laddningsstart",
+    "no": "Neste Ladestart",
+    "es": "Próximo Inicio de Carga",
+    "da": "Næste Opladningsstart",
+    "ru": "Следующее Начало Зарядки",
+    "pl": "Następny Start Ładowania"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor"
+}

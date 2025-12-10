@@ -1,0 +1,605 @@
+{
+  "name": {
+    "en": "Energy Optimizer",
+    "nl": "Energie Optimalisatie",
+    "de": "Energie-Optimierer",
+    "fr": "Optimiseur d'Énergie",
+    "it": "Ottimizzatore Energetico",
+    "sv": "Energi Optimerare",
+    "no": "Energi Optimaliserer",
+    "es": "Optimizador de Energía",
+    "da": "Energi Optimerer",
+    "ru": "Оптимизатор Энергии",
+    "pl": "Optymalizator Energii"
+  },
+  "class": "other",
+  "capabilities": [
+    "onoff",
+    "optimizer_status",
+    "next_charge_start",
+    "estimated_savings"
+  ],
+  "capabilitiesOptions": {
+    "onoff": {
+      "title": {
+        "en": "Optimizer Enabled",
+        "nl": "Optimalisatie Ingeschakeld",
+        "de": "Optimierer Aktiviert",
+        "fr": "Optimiseur Activé",
+        "it": "Ottimizzatore Attivo",
+        "sv": "Optimerare Aktiverad",
+        "no": "Optimaliserer Aktivert",
+        "es": "Optimizador Activado",
+        "da": "Optimerer Aktiveret",
+        "ru": "Оптимизатор Включен",
+        "pl": "Optymalizator Włączony"
+      }
+    }
+  },
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [],
+  "images": {
+    "small": "{{driverAssetsPath}}/images/small.png",
+    "large": "{{driverAssetsPath}}/images/large.png",
+    "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "enter_device_ids"
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ],
+  "settings": [
+    {
+      "type": "group",
+      "label": {
+        "en": "Tibber Configuration",
+        "nl": "Tibber Configuratie",
+        "de": "Tibber Konfiguration",
+        "fr": "Configuration Tibber",
+        "it": "Configurazione Tibber",
+        "sv": "Tibber Konfiguration",
+        "no": "Tibber Konfigurasjon",
+        "es": "Configuración Tibber",
+        "da": "Tibber Konfiguration",
+        "ru": "Конфигурация Tibber",
+        "pl": "Konfiguracja Tibber"
+      },
+      "children": [
+        {
+          "id": "tibber_token",
+          "type": "password",
+          "label": {
+            "en": "Tibber API Token",
+            "nl": "Tibber API Token",
+            "de": "Tibber API Token",
+            "fr": "Jeton API Tibber",
+            "it": "Token API Tibber",
+            "sv": "Tibber API-token",
+            "no": "Tibber API-token",
+            "es": "Token API de Tibber",
+            "da": "Tibber API Token",
+            "ru": "Токен API Tibber",
+            "pl": "Token API Tibber"
+          },
+          "hint": {
+            "en": "Get your token from https://developer.tibber.com/settings/access-token",
+            "nl": "Verkrijg je token van https://developer.tibber.com/settings/access-token",
+            "de": "Token von https://developer.tibber.com/settings/access-token holen",
+            "fr": "Obtenez votre jeton sur https://developer.tibber.com/settings/access-token",
+            "it": "Ottieni il tuo token da https://developer.tibber.com/settings/access-token",
+            "sv": "Hämta din token från https://developer.tibber.com/settings/access-token",
+            "no": "Få tokenet ditt fra https://developer.tibber.com/settings/access-token",
+            "es": "Obtén tu token en https://developer.tibber.com/settings/access-token",
+            "da": "Få dit token fra https://developer.tibber.com/settings/access-token",
+            "ru": "Получите токен на https://developer.tibber.com/settings/access-token",
+            "pl": "Pobierz swój token z https://developer.tibber.com/settings/access-token"
+          },
+          "value": ""
+        },
+        {
+          "id": "tibber_home_id",
+          "type": "text",
+          "label": {
+            "en": "Tibber Home ID",
+            "nl": "Tibber Huis ID",
+            "de": "Tibber Haus-ID",
+            "fr": "ID de la Maison Tibber",
+            "it": "ID Casa Tibber",
+            "sv": "Tibber Hem-ID",
+            "no": "Tibber Hjem-ID",
+            "es": "ID de Casa Tibber",
+            "da": "Tibber Hjem-ID",
+            "ru": "ID Дома Tibber",
+            "pl": "ID Domu Tibber"
+          },
+          "hint": {
+            "en": "Find your Home ID in the Tibber app or developer portal",
+            "nl": "Vind je Huis ID in de Tibber app of ontwikkelaarsportaal",
+            "de": "Finde deine Haus-ID in der Tibber App oder im Entwicklerportal",
+            "fr": "Trouvez votre ID de maison dans l'application Tibber ou le portail développeur",
+            "it": "Trova l'ID della tua casa nell'app Tibber o nel portale sviluppatori",
+            "sv": "Hitta ditt Hem-ID i Tibber-appen eller utvecklarportalen",
+            "no": "Finn Hjem-ID-en din i Tibber-appen eller utviklerportalen",
+            "es": "Encuentra tu ID de casa en la app Tibber o el portal de desarrolladores",
+            "da": "Find dit Hjem-ID i Tibber-appen eller udviklerportalen",
+            "ru": "Найдите ID дома в приложении Tibber или портале разработчика",
+            "pl": "Znajdź swój ID domu w aplikacji Tibber lub portalu programistów"
+          },
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "label": {
+        "en": "Linked Devices",
+        "nl": "Gekoppelde Apparaten",
+        "de": "Verknüpfte Geräte",
+        "fr": "Appareils Liés",
+        "it": "Dispositivi Collegati",
+        "sv": "Länkade Enheter",
+        "no": "Tilkoblede Enheter",
+        "es": "Dispositivos Vinculados",
+        "da": "Tilknyttede Enheder",
+        "ru": "Связанные Устройства",
+        "pl": "Połączone Urządzenia"
+      },
+      "children": [
+        {
+          "id": "battery_device_id",
+          "type": "text",
+          "label": {
+            "en": "Battery Device ID",
+            "nl": "Batterij Apparaat ID",
+            "de": "Batterie Geräte-ID",
+            "fr": "ID Appareil Batterie",
+            "it": "ID Dispositivo Batteria",
+            "sv": "Batteri Enhets-ID",
+            "no": "Batteri Enhets-ID",
+            "es": "ID Dispositivo de Batería",
+            "da": "Batteri Enheds-ID",
+            "ru": "ID Устройства Батареи",
+            "pl": "ID Urządzenia Baterii"
+          },
+          "value": "",
+          "hint": {
+            "en": "Enter the ID of your RCT Power Storage DC device (required)",
+            "nl": "Voer het ID van je RCT Power Storage DC apparaat in (verplicht)",
+            "de": "Geben Sie die ID Ihres RCT Power Storage DC Geräts ein (erforderlich)",
+            "fr": "Entrez l'ID de votre appareil RCT Power Storage DC (requis)",
+            "it": "Inserisci l'ID del tuo dispositivo RCT Power Storage DC (obbligatorio)",
+            "sv": "Ange ID för din RCT Power Storage DC-enhet (krävs)",
+            "no": "Angi ID-en for din RCT Power Storage DC-enhet (påkrevd)",
+            "es": "Ingrese el ID de su dispositivo RCT Power Storage DC (requerido)",
+            "da": "Indtast ID'et for din RCT Power Storage DC-enhed (påkrævet)",
+            "ru": "Введите ID вашего устройства RCT Power Storage DC (обязательно)",
+            "pl": "Wprowadź ID swojego urządzenia RCT Power Storage DC (wymagane)"
+          }
+        },
+        {
+          "id": "solar_device_id",
+          "type": "text",
+          "label": {
+            "en": "Solar Panel Device ID",
+            "nl": "Zonnepaneel Apparaat ID",
+            "de": "Solar Panel Geräte-ID",
+            "fr": "ID Appareil Panneau Solaire",
+            "it": "ID Dispositivo Pannello Solare",
+            "sv": "Solpanel Enhets-ID",
+            "no": "Solpanel Enhets-ID",
+            "es": "ID Dispositivo de Panel Solar",
+            "da": "Solpanel Enheds-ID",
+            "ru": "ID Устройства Солнечной Панели",
+            "pl": "ID Urządzenia Panelu Słonecznego"
+          },
+          "value": "",
+          "hint": {
+            "en": "Enter the ID of your Solar Panel device (optional, e.g., xxxxx-solar_panel)",
+            "nl": "Voer het ID van je zonnepaneel apparaat in (optioneel, bijv. xxxxx-solar_panel)",
+            "de": "Geben Sie die ID Ihres Solarpanel-Geräts ein (optional, z.B. xxxxx-solar_panel)",
+            "fr": "Entrez l'ID de votre appareil panneau solaire (optionnel, p.ex. xxxxx-solar_panel)",
+            "it": "Inserisci l'ID del tuo dispositivo pannello solare (opzionale, es. xxxxx-solar_panel)",
+            "sv": "Ange ID för din solpanelenhet (valfritt, t.ex. xxxxx-solar_panel)",
+            "no": "Angi ID-en for din solpanelenhet (valgfritt, f.eks. xxxxx-solar_panel)",
+            "es": "Ingrese el ID de su dispositivo de panel solar (opcional, ej. xxxxx-solar_panel)",
+            "da": "Indtast ID'et for din solpanelenhed (valgfri, f.eks. xxxxx-solar_panel)",
+            "ru": "Введите ID вашего устройства солнечной панели (необязательно, напр. xxxxx-solar_panel)",
+            "pl": "Wprowadź ID swojego urządzenia panelu słonecznego (opcjonalne, np. xxxxx-solar_panel)"
+          }
+        },
+        {
+          "id": "grid_device_id",
+          "type": "text",
+          "label": {
+            "en": "Grid Meter Device ID",
+            "nl": "Grid Meter Apparaat ID",
+            "de": "Grid Meter Geräte-ID",
+            "fr": "ID Appareil Grid Meter",
+            "it": "ID Dispositivo Grid Meter",
+            "sv": "Grid Meter Enhets-ID",
+            "no": "Grid Meter Enhets-ID",
+            "es": "ID Dispositivo Grid Meter",
+            "da": "Grid Meter Enheds-ID",
+            "ru": "ID Устройства Счетчика Сети",
+            "pl": "ID Urządzenia Grid Meter"
+          },
+          "value": "",
+          "hint": {
+            "en": "Enter the ID of your Grid Meter device (optional, e.g., xxxxx-grid_meter)",
+            "nl": "Voer het ID van je grid meter apparaat in (optioneel, bijv. xxxxx-grid_meter)",
+            "de": "Geben Sie die ID Ihres Grid Meter-Geräts ein (optional, z.B. xxxxx-grid_meter)",
+            "fr": "Entrez l'ID de votre appareil grid meter (optionnel, p.ex. xxxxx-grid_meter)",
+            "it": "Inserisci l'ID del tuo dispositivo grid meter (opzionale, es. xxxxx-grid_meter)",
+            "sv": "Ange ID för din grid meter-enhet (valfritt, t.ex. xxxxx-grid_meter)",
+            "no": "Angi ID-en for din grid meter-enhet (valgfritt, f.eks. xxxxx-grid_meter)",
+            "es": "Ingrese el ID de su dispositivo grid meter (opcional, ej. xxxxx-grid_meter)",
+            "da": "Indtast ID'et for din grid meter-enhed (valgfri, f.eks. xxxxx-grid_meter)",
+            "ru": "Введите ID вашего устройства счетчика сети (необязательно, напр. xxxxx-grid_meter)",
+            "pl": "Wprowadź ID swojego urządzenia grid meter (opcjonalne, np. xxxxx-grid_meter)"
+          }
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "label": {
+        "en": "Optimization Strategy",
+        "nl": "Optimalisatie Strategie",
+        "de": "Optimierungsstrategie",
+        "fr": "Stratégie d'Optimisation",
+        "it": "Strategia di Ottimizzazione",
+        "sv": "Optimiseringsstrategi",
+        "no": "Optimaliseringsstrategi",
+        "es": "Estrategia de Optimización",
+        "da": "Optimeringsstrategi",
+        "ru": "Стратегия Оптимизации",
+        "pl": "Strategia Optymalizacji"
+      },
+      "children": [
+        {
+          "id": "battery_efficiency_loss",
+          "type": "number",
+          "label": {
+            "en": "Battery Efficiency Loss (%)",
+            "nl": "Batterij Efficiëntieverlies (%)",
+            "de": "Batterie-Effizienzverlust (%)",
+            "fr": "Perte d'Efficacité de la Batterie (%)",
+            "it": "Perdita di Efficienza della Batteria (%)",
+            "sv": "Batterieffektivitetsförlust (%)",
+            "no": "Batterieffektivitetstap (%)",
+            "es": "Pérdida de Eficiencia de la Batería (%)",
+            "da": "Batterieffektivitetstab (%)",
+            "ru": "Потери Эффективности Батареи (%)",
+            "pl": "Strata Wydajności Baterii (%)"
+          },
+          "hint": {
+            "en": "Energy loss during charging and discharging cycles (typically 5-10%)",
+            "nl": "Energieverlies tijdens laad- en ontlaadcycli (meestal 5-10%)",
+            "de": "Energieverlust während Lade- und Entladezyklen (typischerweise 5-10%)",
+            "fr": "Perte d'énergie pendant les cycles de charge et décharge (généralement 5-10%)",
+            "it": "Perdita di energia durante i cicli di carica e scarica (tipicamente 5-10%)",
+            "sv": "Energiförlust under laddnings- och urladdningscykler (vanligtvis 5-10%)",
+            "no": "Energitap under lade- og utladingssykluser (vanligvis 5-10%)",
+            "es": "Pérdida de energía durante los ciclos de carga y descarga (típicamente 5-10%)",
+            "da": "Energitab under opladnings- og afladningscyklusser (typisk 5-10%)",
+            "ru": "Потери энергии во время циклов зарядки и разрядки (обычно 5-10%)",
+            "pl": "Strata energii podczas cykli ładowania i rozładowania (zazwyczaj 5-10%)"
+          },
+          "value": 10,
+          "min": 0,
+          "max": 25,
+          "step": 1,
+          "units": "%"
+        },
+        {
+          "id": "target_soc",
+          "type": "number",
+          "label": {
+            "en": "Target State of Charge (%)",
+            "nl": "Doel Laadniveau (%)",
+            "de": "Ziel-Ladezustand (%)",
+            "fr": "État de Charge Cible (%)",
+            "it": "Stato di Carica Target (%)",
+            "sv": "Målnivå för Laddning (%)",
+            "no": "Mål Ladenivå (%)",
+            "es": "Estado de Carga Objetivo (%)",
+            "da": "Mål Ladetilstand (%)",
+            "ru": "Целевой Уровень Заряда (%)",
+            "pl": "Docelowy Stan Naładowania (%)"
+          },
+          "hint": {
+            "en": "The optimizer will charge the battery to this level before expensive price periods",
+            "nl": "De optimizer zal de batterij opladen tot dit niveau vóór dure prijsperioden",
+            "de": "Der Optimierer lädt die Batterie vor teuren Preisperioden auf dieses Niveau",
+            "fr": "L'optimiseur chargera la batterie à ce niveau avant les périodes de prix élevés",
+            "it": "L'ottimizzatore caricherà la batteria a questo livello prima dei periodi di prezzo elevato",
+            "sv": "Optimeraren kommer att ladda batteriet till denna nivå före dyra prisperioder",
+            "no": "Optimalisereren vil lade batteriet til dette nivået før dyre prisperioder",
+            "es": "El optimizador cargará la batería a este nivel antes de períodos de precios altos",
+            "da": "Optimereren vil oplade batteriet til dette niveau før dyre prisperioder",
+            "ru": "Оптимизатор зарядит батарею до этого уровня перед дорогими ценовыми периодами",
+            "pl": "Optymalizator naładuje baterię do tego poziomu przed drogimi okresami cenowymi"
+          },
+          "value": 85,
+          "min": 50,
+          "max": 100,
+          "step": 5,
+          "units": {
+            "en": "%"
+          }
+        },
+        {
+          "id": "price_threshold_percent",
+          "type": "number",
+          "label": {
+            "en": "Price Threshold (% below average)",
+            "nl": "Prijsdrempel (% onder gemiddelde)",
+            "de": "Preisschwelle (% unter Durchschnitt)",
+            "fr": "Seuil de Prix (% en dessous de la moyenne)",
+            "it": "Soglia di Prezzo (% sotto media)",
+            "sv": "Priströskel (% under genomsnitt)",
+            "no": "Pristerskel (% under gjennomsnitt)",
+            "es": "Umbral de Precio (% por debajo del promedio)",
+            "da": "Pristærskel (% under gennemsnit)",
+            "ru": "Порог Цены (% ниже среднего)",
+            "pl": "Próg Cenowy (% poniżej średniej)"
+          },
+          "hint": {
+            "en": "Only charge when price is at least this much below 24h average",
+            "nl": "Alleen opladen als de prijs minstens zoveel onder het 24-uurs gemiddelde ligt",
+            "de": "Nur laden, wenn der Preis mindestens so viel unter dem 24-Stunden-Durchschnitt liegt",
+            "fr": "Ne charger que lorsque le prix est au moins cette valeur en dessous de la moyenne sur 24h",
+            "it": "Carica solo quando il prezzo è almeno così tanto sotto la media di 24h",
+            "sv": "Ladda endast när priset är minst så mycket under 24-timmars genomsnittet",
+            "no": "Lad bare når prisen er minst så mye under 24-timers gjennomsnittet",
+            "es": "Cargar solo cuando el precio esté al menos esta cantidad por debajo del promedio de 24h",
+            "da": "Oplad kun når prisen er mindst så meget under 24-timers gennemsnittet",
+            "ru": "Заряжать только когда цена как минимум настолько ниже среднего за 24ч",
+            "pl": "Ładuj tylko gdy cena jest przynajmniej o tyle poniżej średniej z 24h"
+          },
+          "value": 10,
+          "min": 0,
+          "max": 50,
+          "step": 5,
+          "units": {
+            "en": "%"
+          }
+        },
+        {
+          "id": "charge_power_kw",
+          "type": "number",
+          "label": {
+            "en": "Charge Power (kW)",
+            "nl": "Laadvermogen (kW)",
+            "de": "Ladeleistung (kW)",
+            "fr": "Puissance de Charge (kW)",
+            "it": "Potenza di Carica (kW)",
+            "sv": "Laddningseffekt (kW)",
+            "no": "Ladeeffekt (kW)",
+            "es": "Potencia de Carga (kW)",
+            "da": "Opladningseffekt (kW)",
+            "ru": "Мощность Зарядки (кВт)",
+            "pl": "Moc Ładowania (kW)"
+          },
+          "hint": {
+            "en": "Maximum grid charging power (must match inverter settings)",
+            "nl": "Maximaal netlaadvermogen (moet overeenkomen met inverter-instellingen)",
+            "de": "Maximale Netzladeleistung (muss mit Wechselrichter-Einstellungen übereinstimmen)",
+            "fr": "Puissance de charge maximale du réseau (doit correspondre aux paramètres de l'onduleur)",
+            "it": "Potenza di carica massima dalla rete (deve corrispondere alle impostazioni dell'inverter)",
+            "sv": "Maximal nätladdningseffekt (måste matcha växelriktarinställningar)",
+            "no": "Maksimal nettladeeffekt (må samsvare med vekselretterinnstillinger)",
+            "es": "Potencia de carga de red máxima (debe coincidir con configuración del inversor)",
+            "da": "Maksimal netopladningseffekt (skal matche inverterindstillinger)",
+            "ru": "Максимальная мощность зарядки от сети (должна соответствовать настройкам инвертора)",
+            "pl": "Maksymalna moc ładowania z sieci (musi odpowiadać ustawieniom falownika)"
+          },
+          "value": 6.0,
+          "min": 1,
+          "max": 10,
+          "step": 0.5,
+          "units": {
+            "en": "kW"
+          }
+        },
+        {
+          "id": "min_soc_threshold",
+          "type": "number",
+          "label": {
+            "en": "Empty Battery Threshold (%)",
+            "nl": "Lege Batterij Drempel (%)",
+            "de": "Leere Batterie Schwelle (%)",
+            "fr": "Seuil de Batterie Vide (%)",
+            "it": "Soglia Batteria Vuota (%)",
+            "sv": "Tom Batteri Tröskel (%)",
+            "no": "Tom Batteri Terskel (%)",
+            "es": "Umbral de Batería Vacía (%)",
+            "da": "Tom Batteri Tærskel (%)",
+            "ru": "Порог Пустой Батареи (%)",
+            "pl": "Próg Pustej Baterii (%)"
+          },
+          "hint": {
+            "en": "When battery SoC reaches this level, charge log is cleared (battery considered empty)",
+            "nl": "Wanneer batterij SoC dit niveau bereikt, wordt het laadlogboek gewist (batterij wordt als leeg beschouwd)",
+            "de": "Wenn Batterie-SoC dieses Niveau erreicht, wird das Ladeprotokoll gelöscht (Batterie gilt als leer)",
+            "fr": "Lorsque le SoC de la batterie atteint ce niveau, le journal de charge est effacé (batterie considérée vide)",
+            "it": "Quando il SoC della batteria raggiunge questo livello, il registro di carica viene cancellato (batteria considerata vuota)",
+            "sv": "När batteriets SoC når denna nivå rensas laddloggen (batteriet anses tomt)",
+            "no": "Når batteriet SoC når dette nivået, tømmes laddeloggen (batteriet anses som tomt)",
+            "es": "Cuando el SoC de la batería alcanza este nivel, se borra el registro de carga (batería considerada vacía)",
+            "da": "Når batteriet SoC når dette niveau, ryddes opladningsloggen (batteriet betragtes som tomt)",
+            "ru": "Когда SoC батареи достигает этого уровня, журнал зарядки очищается (батарея считается пустой)",
+            "pl": "Gdy SoC baterii osiągnie ten poziom, dziennik ładowania zostanie wyczyszczony (bateria uważana za pustą)"
+          },
+          "value": 7,
+          "min": 0,
+          "max": 20,
+          "step": 1,
+          "units": "%"
+        },
+        {
+          "id": "forecast_days",
+          "type": "number",
+          "label": {
+            "en": "Forecast History (days)",
+            "nl": "Prognose Geschiedenis (dagen)",
+            "de": "Prognose-Historie (Tage)",
+            "fr": "Historique de Prévision (jours)",
+            "it": "Storico Previsioni (giorni)",
+            "sv": "Prognoshistorik (dagar)",
+            "no": "Prognosehistorikk (dager)",
+            "es": "Historial de Pronóstico (días)",
+            "da": "Prognosehistorik (dage)",
+            "ru": "История Прогноза (дни)",
+            "pl": "Historia Prognozy (dni)"
+          },
+          "hint": {
+            "en": "Number of days to keep for consumption/production forecasting",
+            "nl": "Aantal dagen om te bewaren voor verbruiks-/productieprognose",
+            "de": "Anzahl der Tage für Verbrauchs-/Produktionsprognose",
+            "fr": "Nombre de jours à conserver pour la prévision de consommation/production",
+            "it": "Numero di giorni da conservare per le previsioni di consumo/produzione",
+            "sv": "Antal dagar att behålla för förbrukning/produktionsprognos",
+            "no": "Antall dager å beholde for forbruks-/produksjonsprognoser",
+            "es": "Número de días a mantener para pronóstico de consumo/producción",
+            "da": "Antal dage at beholde til forbrugs-/produktionsprognose",
+            "ru": "Количество дней для хранения прогноза потребления/производства",
+            "pl": "Liczba dni do zachowania dla prognozy zużycia/produkcji"
+          },
+          "value": 7,
+          "min": 1,
+          "max": 14,
+          "step": 1,
+          "units": {
+            "en": "days",
+            "nl": "dagen",
+            "de": "Tage",
+            "fr": "jours",
+            "it": "giorni",
+            "sv": "dagar",
+            "no": "dager",
+            "es": "días",
+            "da": "dage",
+            "ru": "дней",
+            "pl": "dni"
+          }
+        },
+        {
+          "id": "daily_fetch_hour",
+          "type": "number",
+          "label": {
+            "en": "Daily Price Fetch Hour (0-23)",
+            "nl": "Dagelijks Prijzen Ophalen Uur (0-23)",
+            "de": "Tägliche Preisabruf Stunde (0-23)",
+            "fr": "Heure de Récupération des Prix Quotidiens (0-23)",
+            "it": "Ora di Recupero Prezzi Giornaliero (0-23)",
+            "sv": "Daglig Prishämtningstimme (0-23)",
+            "no": "Daglig Prishentningstid (0-23)",
+            "es": "Hora de Obtención de Precios Diaria (0-23)",
+            "da": "Daglig Prishentningstime (0-23)",
+            "ru": "Час Ежедневного Получения Цен (0-23)",
+            "pl": "Godzina Codziennego Pobierania Cen (0-23)"
+          },
+          "hint": {
+            "en": "Hour of day to fetch tomorrow's prices (typically 15:00 when Tibber publishes)",
+            "nl": "Uur van de dag om prijzen van morgen op te halen (meestal 15:00 wanneer Tibber publiceert)",
+            "de": "Tagesstunde zum Abrufen der Preise von morgen (typischerweise 15:00, wenn Tibber veröffentlicht)",
+            "fr": "Heure de la journée pour récupérer les prix de demain (généralement 15h00 lors de la publication Tibber)",
+            "it": "Ora del giorno per recuperare i prezzi di domani (tipicamente 15:00 quando Tibber pubblica)",
+            "sv": "Timme på dagen för att hämta morgondagens priser (vanligtvis 15:00 när Tibber publicerar)",
+            "no": "Time på dagen for å hente morgendagens priser (vanligvis 15:00 når Tibber publiserer)",
+            "es": "Hora del día para obtener los precios de mañana (típicamente 15:00 cuando Tibber publica)",
+            "da": "Time på dagen til at hente morgendagens priser (typisk 15:00 når Tibber udgiver)",
+            "ru": "Час дня для получения цен на завтра (обычно 15:00, когда Tibber публикует)",
+            "pl": "Godzina dnia do pobrania jutrzejszych cen (zwykle 15:00, gdy Tibber publikuje)"
+          },
+          "value": 15,
+          "min": 0,
+          "max": 23,
+          "step": 1,
+          "units": {
+            "en": "h"
+          }
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "label": {
+        "en": "System Configuration",
+        "nl": "Systeemconfiguratie",
+        "de": "Systemkonfiguration",
+        "fr": "Configuration Système",
+        "it": "Configurazione del Sistema",
+        "sv": "Systemkonfiguration",
+        "no": "Systemkonfigurasjon",
+        "es": "Configuración del Sistema",
+        "da": "Systemkonfiguration",
+        "ru": "Конфигурация Системы",
+        "pl": "Konfiguracja Systemu"
+      },
+      "children": [
+        {
+          "id": "polling_interval",
+          "type": "number",
+          "label": {
+            "en": "Polling Interval",
+            "nl": "Polling Interval",
+            "de": "Abfrageintervall",
+            "fr": "Intervalle de Polling",
+            "it": "Intervallo di Polling",
+            "sv": "Pollningsintervall",
+            "no": "Pollingsintervall",
+            "es": "Intervalo de Sondeo",
+            "da": "Pollingsinterval",
+            "ru": "Интервал Опроса",
+            "pl": "Interwał Odpytywania"
+          },
+          "hint": {
+            "en": "How often to check for optimization triggers (10-59 seconds, recommended: 30s). Restart required after change.",
+            "nl": "Hoe vaak om te controleren op optimalisatie triggers (10-59 seconden, aanbevolen: 30s). Herstart vereist na wijziging.",
+            "de": "Wie oft auf Optimierungs-Trigger geprüft wird (10-59 Sekunden, empfohlen: 30s). Neustart nach Änderung erforderlich.",
+            "fr": "Fréquence de vérification des déclencheurs d'optimisation (10-59 secondes, recommandé: 30s). Redémarrage requis après modification.",
+            "it": "Frequenza di controllo dei trigger di ottimizzazione (10-59 secondi, consigliato: 30s). Riavvio richiesto dopo la modifica.",
+            "sv": "Hur ofta optimeringstriggers ska kontrolleras (10-59 sekunder, rekommenderat: 30s). Omstart krävs efter ändring.",
+            "no": "Hvor ofte optimeringsutløsere skal sjekkes (10-59 sekunder, anbefalt: 30s). Omstart nødvendig etter endring.",
+            "es": "Con qué frecuencia verificar los activadores de optimización (10-59 segundos, recomendado: 30s). Se requiere reinicio después del cambio.",
+            "da": "Hvor ofte optimeringstriggers skal kontrolleres (10-59 sekunder, anbefalet: 30s). Genstart påkrævet efter ændring.",
+            "ru": "Как часто проверять триггеры оптимизации (10-59 секунд, рекомендуется: 30с). Требуется перезапуск после изменения.",
+            "pl": "Jak często sprawdzać wyzwalacze optymalizacji (10-59 sekund, zalecane: 30s). Wymagany restart po zmianie."
+          },
+          "value": 30,
+          "min": 10,
+          "max": 59,
+          "step": 1,
+          "units": {
+            "en": "seconds",
+            "nl": "seconden",
+            "de": "Sekunden",
+            "fr": "secondes",
+            "it": "secondi",
+            "sv": "sekunder",
+            "no": "sekunder",
+            "es": "segundos",
+            "da": "sekunder",
+            "ru": "секунд",
+            "pl": "sekund"
+          }
+        }
+      ]
+    }
+  ]
+}

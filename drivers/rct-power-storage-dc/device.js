@@ -11,13 +11,13 @@ class MyDevice extends RCTDevice {
   async onInit() {
     this.log('MyDevice has been initialized');
     await super.onInit();
-    
+
     // Migrate device class from solarpanel to battery
     if (this.getClass() !== 'battery') {
       this.log('Migrating device class from solarpanel to battery');
       await this.setClass('battery').catch(this.error);
     }
-    
+
     // Migrate meter_power capabilities for charged/discharged tracking
     if (!this.hasCapability('meter_power.charged')) {
       this.log('Adding meter_power.charged capability');
@@ -43,7 +43,7 @@ class MyDevice extends RCTDevice {
       this.log('Removing old meter_power capability');
       await this.removeCapability('meter_power');
     }
-    
+
     // Check if migration is needed for capability
     if (this.hasCapability('soc_stratgey') === false) {
       await this.addCapability('soc_strategy');
@@ -149,7 +149,7 @@ class MyDevice extends RCTDevice {
       // So we need to INVERT the sign
       const batteryPowerRaw = await this.conn.queryFloat32(Identifier.BATTERY_POWER_W);
       const batteryPowerHomey = -batteryPowerRaw; // INVERT for Homey convention
-      
+
       // Set measure_power with Homey convention (+ discharging, - charging)
       await this.setCapabilityValue('measure_power', Math.round(batteryPowerHomey));
 
@@ -160,7 +160,7 @@ class MyDevice extends RCTDevice {
       if (timeDeltaHours > 0) {
         const avgPower = (batteryPowerHomey + this._lastBatteryPower) / 2;
         const energyDelta = Math.abs(avgPower * timeDeltaHours) / 1000; // Convert Wh to kWh
-        
+
         // Homey convention: positive = charging (consuming), negative = discharging (delivering)
         if (avgPower > 0) {
           // Battery is charging (consuming power)

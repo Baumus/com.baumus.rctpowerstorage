@@ -1,0 +1,19 @@
+{
+  "type": "string",
+  "title": {
+    "en": "Optimizer Status",
+    "nl": "Optimalisatie Status",
+    "de": "Optimierer Status",
+    "fr": "Statut de l'Optimiseur",
+    "it": "Stato Ottimizzatore",
+    "sv": "Optimerare Status",
+    "no": "Optimaliserer Status",
+    "es": "Estado del Optimizador",
+    "da": "Optimerer Status",
+    "ru": "Статус Оптимизатора",
+    "pl": "Status Optymalizatora"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor"
+}
