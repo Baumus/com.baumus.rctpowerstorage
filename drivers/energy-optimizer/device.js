@@ -2,6 +2,14 @@
 
 const RCTDevice = require('../../lib/rct-device');
 
+// Try to load LP solver from submodule
+let lpSolver;
+try {
+  lpSolver = require('../../lib/javascript-lp-solver/src/main');
+} catch (error) {
+  // LP solver not available, will fall back to heuristic
+}
+
 class EnergyOptimizerDevice extends RCTDevice {
 
   /**
@@ -386,6 +394,79 @@ class EnergyOptimizerDevice extends RCTDevice {
     const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
     this.log(`Average price: ${avgPrice.toFixed(4)} €/kWh`);
 
+    // Try LP-based optimization first
+    const lpResult = this.optimizeStrategyWithLp(indexedData, {
+      batteryCapacity,
+      currentSoc,
+      maxTargetSoc,
+      chargePowerKW,
+      intervalHours: INTERVAL_HOURS,
+      efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
+    });
+
+    if (lpResult) {
+      const {
+        chargeIntervals,
+        dischargeIntervals,
+        totalChargeKWh,
+        totalDischargeKWh,
+        savings,
+      } = lpResult;
+
+      // Calculate average cost of energy currently in battery
+      const batteryCostInfo = this.calculateBatteryEnergyCost();
+
+      this.currentStrategy = {
+        chargeIntervals,
+        dischargeIntervals,
+        expensiveIntervals: dischargeIntervals,
+        avgPrice,
+        neededKWh: totalChargeKWh,
+        forecastedDemand: totalDischargeKWh,
+        batteryStatus: {
+          currentSoc,
+          targetSoc: maxTargetSoc,
+          availableCapacity: maxBatteryKWh,
+          batteryCapacity,
+          energyCost: batteryCostInfo,
+        },
+      };
+
+      this.lastOptimizationSoC = currentSoc;
+
+      if (chargeIntervals.length > 0) {
+        const firstCharge = new Date(chargeIntervals[0].startsAt);
+        const formattedTime = firstCharge.toLocaleString(this.homey.i18n.getLanguage(), {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Berlin',
+        });
+
+        await this.setCapabilityValue('next_charge_start', formattedTime);
+        await this.setCapabilityValue('estimated_savings', Math.round(savings * 100) / 100);
+
+        this.log('\n=== LP STRATEGY SUMMARY ===');
+        this.log(`Charge intervals: ${chargeIntervals.length}`);
+        this.log(`Discharge intervals: ${dischargeIntervals.length}`);
+        this.log(`First charge: ${firstCharge.toLocaleString()}`);
+        this.log(`Total charge: ${totalChargeKWh.toFixed(2)} kWh`);
+        this.log(`Estimated savings: €${savings.toFixed(2)}`);
+        this.log('======================\n');
+      } else {
+        await this.setCapabilityValue('next_charge_start', this.homey.__('status.no_cheap_slots'));
+        await this.setCapabilityValue('estimated_savings', 0);
+      }
+
+      this.log('LP optimization completed successfully, skipping heuristic optimizer.');
+      return;
+    }
+
+    // Fallback: heuristic optimization if LP fails or solver unavailable
+    this.log('Using heuristic optimization (LP not available or failed)');
+
     // Compute dynamic price thresholds (average + percentile) for classifying expensive intervals
     const sortedPrices = indexedData.map((p) => p.total).sort((a, b) => a - b);
     const getPercentile = (values, q) => {
@@ -687,6 +768,221 @@ class EnergyOptimizerDevice extends RCTDevice {
   getIntervalOfDay(date) {
     const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
     return Math.floor(minutesSinceMidnight / 15);
+  }
+
+  /**
+   * Optimize charging/discharging using a linear program (LP)
+   * Returns { chargeIntervals, dischargeIntervals, totalChargeKWh, totalDischargeKWh, savings }
+   */
+  optimizeStrategyWithLp(indexedData, options) {
+    if (!lpSolver) {
+      this.log('LP solver not available, falling back to heuristic optimizer');
+      return null;
+    }
+
+    const {
+      batteryCapacity,
+      currentSoc,
+      maxTargetSoc,
+      chargePowerKW,
+      intervalHours,
+      efficiencyLoss,
+    } = options;
+
+    const num = indexedData.length;
+
+    // 1) Prognostizierte Nachfrage pro Intervall (kWh)
+    const demandPerInterval = indexedData.map((interval) => this.forecastEnergyDemand([interval]));
+
+    const currentEnergyKWh = currentSoc * batteryCapacity;
+    const maxEnergyKWh = maxTargetSoc * batteryCapacity;
+    const usableCapacityKWh = Math.max(0, maxEnergyKWh - currentEnergyKWh);
+
+    if (usableCapacityKWh < 0.01 && currentEnergyKWh < 0.01) {
+      this.log('LP: No usable battery capacity (empty and no headroom), skipping LP optimization');
+      return null;
+    }
+
+    const energyPerInterval = chargePowerKW * intervalHours;
+    const maxDischargePerInterval = energyPerInterval;
+
+    const etaCharge = 1 - efficiencyLoss;
+    const etaDischarge = 1 - efficiencyLoss;
+
+    this.log('\n=== LP OPTIMIZATION ===');
+    this.log(`Intervals: ${num}, Battery: ${currentEnergyKWh.toFixed(2)} kWh / ${maxEnergyKWh.toFixed(2)} kWh`);
+    this.log(`Charge/Discharge power: ${chargePowerKW} kW per interval`);
+
+    // 2) LP-Modell aufbauen
+    const model = {
+      optimize: 'totalCost',
+      opType: 'min',
+      constraints: {},
+      variables: {},
+    };
+
+    // Direct references (ESLint prefers destructuring, but this is clearer)
+    const { constraints } = model;
+    const { variables } = model;
+
+    // Baseline-Kosten (ohne Batterie) für spätere Einsparungsberechnung
+    const baselineCost = demandPerInterval.reduce(
+      (sum, d, i) => sum + d * indexedData[i].total,
+      0,
+    );
+
+    // 3) Variablen und Constraints
+    for (let t = 0; t < num; t += 1) {
+      const price = indexedData[t].total;
+      const demand = demandPerInterval[t];
+
+      const cVar = `c_${t}`;
+      const dVar = `d_${t}`;
+      const sVar = `s_${t}`;
+
+      // Variablen mit Kostenkoeffizienten:
+      // grid_t = demand + charge_t - discharge_t
+      // cost = price * grid_t = price * demand + price * charge_t - price * discharge_t
+      variables[cVar] = {
+        totalCost: price,
+      };
+      variables[dVar] = {
+        totalCost: -price,
+      };
+      variables[sVar] = {
+        totalCost: 0,
+      };
+
+      // Ladeleistung: 0 <= charge_t <= energyPerInterval
+      const cCapName = `cCap_${t}`;
+      constraints[cCapName] = { max: energyPerInterval };
+      constraints[cCapName][cVar] = 1;
+
+      // Entladeleistung: 0 <= discharge_t <= maxDischargePerInterval
+      const dCapName = `dCap_${t}`;
+      constraints[dCapName] = { max: maxDischargePerInterval };
+      constraints[dCapName][dVar] = 1;
+
+      // SoC-Obergrenze: soc_t <= maxEnergyKWh
+      const sCapName = `sCap_${t}`;
+      constraints[sCapName] = { max: maxEnergyKWh };
+      constraints[sCapName][sVar] = 1;
+
+      // Keine Netto-Einspeisung: grid_t = demand + charge - discharge >= 0
+      // => charge_t - discharge_t >= -demand
+      const gridName = `grid_${t}`;
+      constraints[gridName] = { min: -demand };
+      constraints[gridName][cVar] = 1;
+      constraints[gridName][dVar] = -1;
+
+      // Optional: nicht mehr entladen als Bedarf
+      const dDemandName = `demandLimit_${t}`;
+      constraints[dDemandName] = { max: demand };
+      constraints[dDemandName][dVar] = 1;
+    }
+
+    // 4) SoC-Dynamik mit Effizienz
+    // soc_0 = currentEnergyKWh + etaCharge * charge_0 - (1/etaDischarge) * discharge_0
+    {
+      const c0 = 'c_0';
+      const d0 = 'd_0';
+      const s0 = 's_0';
+
+      const soc0Max = 'soc0_eqMax';
+      const soc0Min = 'soc0_eqMin';
+
+      constraints[soc0Max] = { max: currentEnergyKWh };
+      constraints[soc0Max][s0] = 1;
+      constraints[soc0Max][c0] = -etaCharge;
+      constraints[soc0Max][d0] = 1 / etaDischarge;
+
+      constraints[soc0Min] = { min: currentEnergyKWh };
+      constraints[soc0Min][s0] = 1;
+      constraints[soc0Min][c0] = -etaCharge;
+      constraints[soc0Min][d0] = 1 / etaDischarge;
+    }
+
+    // Für t >= 1: soc_t = soc_{t-1} + etaCharge * charge_t - (1/etaDischarge) * discharge_t
+    for (let t = 1; t < num; t += 1) {
+      const cVar = `c_${t}`;
+      const dVar = `d_${t}`;
+      const sVar = `s_${t}`;
+      const sPrev = `s_${t - 1}`;
+
+      const socEqMax = `soc_${t}_eqMax`;
+      const socEqMin = `soc_${t}_eqMin`;
+
+      constraints[socEqMax] = { max: 0 };
+      constraints[socEqMax][sVar] = 1;
+      constraints[socEqMax][sPrev] = -1;
+      constraints[socEqMax][cVar] = -etaCharge;
+      constraints[socEqMax][dVar] = 1 / etaDischarge;
+
+      constraints[socEqMin] = { min: 0 };
+      constraints[socEqMin][sVar] = 1;
+      constraints[socEqMin][sPrev] = -1;
+      constraints[socEqMin][cVar] = -etaCharge;
+      constraints[socEqMin][dVar] = 1 / etaDischarge;
+    }
+
+    // 5) LP lösen
+    let result;
+    try {
+      result = lpSolver.Solve(model);
+    } catch (error) {
+      this.log('LP solver error, falling back to heuristic:', error.message);
+      return null;
+    }
+
+    if (!result || typeof result.totalCost !== 'number' || !result.feasible) {
+      this.log('LP solver returned no valid solution, falling back to heuristic');
+      return null;
+    }
+
+    // 6) Lösung interpretieren
+    const chargeIntervals = [];
+    const dischargeIntervals = [];
+    let totalChargeKWh = 0;
+    let totalDischargeKWh = 0;
+
+    const EPS = 0.01;
+
+    for (let t = 0; t < num; t += 1) {
+      const cVar = `c_${t}`;
+      const dVar = `d_${t}`;
+      const charge = result[cVar] || 0;
+      const discharge = result[dVar] || 0;
+
+      if (charge > EPS) {
+        totalChargeKWh += charge;
+        const chargeInterval = { ...indexedData[t], plannedEnergyKWh: charge };
+        chargeIntervals.push(chargeInterval);
+      }
+
+      if (discharge > EPS) {
+        totalDischargeKWh += discharge;
+        const dischargeInterval = { ...indexedData[t], demandKWh: discharge };
+        dischargeIntervals.push(dischargeInterval);
+      }
+    }
+
+    // Variable Kosten aus LP: price * (charge - discharge)
+    const optimizedVariableCost = result.totalCost || 0;
+    // Gesamtkosten: baseline (demand * price) + variable (charge - discharge)
+    const optimizedTotalCost = baselineCost + optimizedVariableCost;
+    const savings = Math.max(0, baselineCost - optimizedTotalCost);
+
+    this.log(`LP: baseline cost = €${baselineCost.toFixed(2)}, optimized = €${optimizedTotalCost.toFixed(2)}, savings = €${savings.toFixed(2)}`);
+    this.log(`LP: totalCharge = ${totalChargeKWh.toFixed(2)} kWh, totalDischarge = ${totalDischargeKWh.toFixed(2)} kWh`);
+    this.log('======================\n');
+
+    return {
+      chargeIntervals,
+      dischargeIntervals,
+      totalChargeKWh,
+      totalDischargeKWh,
+      savings,
+    };
   }
 
   /**
