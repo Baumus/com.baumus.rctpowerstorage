@@ -88,5 +88,8 @@
   },
   "4.1.0": {
     "en": "added: LP solver for energy optimizer"
+  },
+  "4.1.1": {
+    "en": "optimized: code refactoring"
   }
 }
