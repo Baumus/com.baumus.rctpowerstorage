@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.baumus.rctpowerstorage",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "compatibility": ">=12.4.5",
   "sdk": 3,
   "platforms": [
@@ -505,6 +505,90 @@
               "max": 20,
               "step": 1,
               "units": "%"
+            },
+            {
+              "id": "expensive_price_factor",
+              "type": "number",
+              "label": {
+                "en": "Expensive Price Factor",
+                "nl": "Dure Prijs Factor",
+                "de": "Teurer Preis Faktor",
+                "fr": "Facteur de Prix Élevé",
+                "it": "Fattore Prezzo Elevato",
+                "sv": "Dyrt Pris Faktor",
+                "no": "Dyr Pris Faktor",
+                "es": "Factor de Precio Alto",
+                "da": "Dyr Pris Faktor",
+                "ru": "Фактор Высокой Цены",
+                "pl": "Współczynnik Wysokiej Ceny"
+              },
+              "hint": {
+                "en": "Intervals with prices above (average × factor) are considered expensive (e.g., 1.05 = 5% above average)",
+                "nl": "Intervallen met prijzen boven (gemiddelde × factor) worden als duur beschouwd (bijv. 1.05 = 5% boven gemiddelde)",
+                "de": "Intervalle mit Preisen über (Durchschnitt × Faktor) gelten als teuer (z.B. 1.05 = 5% über Durchschnitt)",
+                "fr": "Les intervalles avec des prix supérieurs à (moyenne × facteur) sont considérés comme chers (par ex. 1.05 = 5% au-dessus de la moyenne)",
+                "it": "Gli intervalli con prezzi superiori a (media × fattore) sono considerati costosi (ad es. 1.05 = 5% sopra la media)",
+                "sv": "Intervaller med priser över (genomsnitt × faktor) anses dyra (t.ex. 1.05 = 5% över genomsnitt)",
+                "no": "Intervaller med priser over (gjennomsnitt × faktor) anses som dyre (f.eks. 1.05 = 5% over gjennomsnitt)",
+                "es": "Intervalos con precios superiores a (promedio × factor) se consideran caros (ej. 1.05 = 5% sobre el promedio)",
+                "da": "Intervaller med priser over (gennemsnit × faktor) betragtes som dyre (f.eks. 1.05 = 5% over gennemsnit)",
+                "ru": "Интервалы с ценами выше (среднее × фактор) считаются дорогими (напр. 1.05 = 5% выше среднего)",
+                "pl": "Przedziały z cenami powyżej (średnia × współczynnik) są uważane za drogie (np. 1.05 = 5% powyżej średniej)"
+              },
+              "value": 1.05,
+              "min": 1,
+              "max": 1.5,
+              "step": 0.01,
+              "units": {
+                "en": "×"
+              }
+            },
+            {
+              "id": "min_profit_cent_per_kwh",
+              "type": "number",
+              "label": {
+                "en": "Minimum Profit (cent/kWh)",
+                "nl": "Minimale Winst (cent/kWh)",
+                "de": "Mindestgewinn (Cent/kWh)",
+                "fr": "Profit Minimum (cent/kWh)",
+                "it": "Profitto Minimo (cent/kWh)",
+                "sv": "Minsta Vinst (öre/kWh)",
+                "no": "Minste Fortjeneste (øre/kWh)",
+                "es": "Beneficio Mínimo (cent/kWh)",
+                "da": "Minimum Fortjeneste (øre/kWh)",
+                "ru": "Минимальная Прибыль (цент/кВтч)",
+                "pl": "Minimalny Zysk (gr/kWh)"
+              },
+              "hint": {
+                "en": "Only charge if discharge price minus charge price (with losses) exceeds this minimum profit margin",
+                "nl": "Alleen opladen als ontlaadprijs minus oplaadprijs (met verliezen) deze minimale winstmarge overschrijdt",
+                "de": "Nur laden, wenn Entladepreis minus Ladepreis (mit Verlusten) diese Mindestgewinnspanne überschreitet",
+                "fr": "Ne charger que si le prix de décharge moins le prix de charge (avec pertes) dépasse cette marge bénéficiaire minimale",
+                "it": "Carica solo se il prezzo di scarica meno il prezzo di carica (con perdite) supera questo margine di profitto minimo",
+                "sv": "Ladda endast om urladdningspris minus laddningspris (med förluster) överstiger denna minimivinst",
+                "no": "Lad bare hvis utladingspris minus ladingspris (med tap) overstiger denne minimumfortjeneste",
+                "es": "Cargar solo si el precio de descarga menos el precio de carga (con pérdidas) supera este margen mínimo de beneficio",
+                "da": "Oplad kun hvis afladningspris minus opladningspris (med tab) overstiger denne minimumfortjeneste",
+                "ru": "Заряжать только если цена разряда минус цена зарядки (с потерями) превышает эту минимальную маржу прибыли",
+                "pl": "Ładuj tylko jeśli cena rozładowania minus cena ładowania (ze stratami) przekracza ten minimalny margines zysku"
+              },
+              "value": 6,
+              "min": 0,
+              "max": 20,
+              "step": 0.5,
+              "units": {
+                "en": "ct/kWh",
+                "nl": "ct/kWh",
+                "de": "ct/kWh",
+                "fr": "ct/kWh",
+                "it": "ct/kWh",
+                "sv": "öre/kWh",
+                "no": "øre/kWh",
+                "es": "ct/kWh",
+                "da": "øre/kWh",
+                "ru": "цент/кВтч",
+                "pl": "gr/kWh"
+              }
             },
             {
               "id": "forecast_days",

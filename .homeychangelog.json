@@ -91,5 +91,8 @@
   },
   "4.1.1": {
     "en": "optimized: code refactoring"
+  },
+  "4.1.2": {
+    "en": "feat: define minimum margin in settings"
   }
 }
