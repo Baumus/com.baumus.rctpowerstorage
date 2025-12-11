@@ -1,0 +1,28 @@
+# Test files and coverage reports
+test/
+coverage/
+
+# Development tools
+tools/
+
+# Test configuration
+jest.config.json
+
+# Documentation for testing
+TESTING.md
+
+# Development files
+.vscode/
+.git/
+.gitignore
+*.log
+npm-debug.log*
+
+# TypeScript source files (only compiled JS needed)
+*.ts
+
+# Node modules (installed separately on Homey)
+node_modules/
+
+# Build artifacts
+.homeybuild/

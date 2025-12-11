@@ -6,7 +6,10 @@
     "node": ">=16.0.0"
   },
   "scripts": {
-    "lint": "eslint --ext .js,.ts --ignore-path .gitignore ."
+    "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "devDependencies": {
     "@tsconfig/node12": "^12.1.7",
@@ -15,6 +18,7 @@
     "@types/node": "^20.6.0",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.1",
+    "jest": "^30.2.0",
     "typescript": "^5.9.3"
   }
 }

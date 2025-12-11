@@ -1,6 +1,7 @@
 'use strict';
 
 const RCTDevice = require('../../lib/rct-device');
+const { computeHeuristicStrategy, optimizeStrategyWithLp } = require('./optimizer-core');
 
 // Try to load LP solver from submodule
 let lpSolver;
@@ -504,14 +505,26 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log(`Average price: ${avgPrice.toFixed(4)} €/kWh`);
 
     // Try LP-based optimization first
-    const lpResult = this.optimizeStrategyWithLp(indexedData, {
-      batteryCapacity,
-      currentSoc,
-      maxTargetSoc,
-      chargePowerKW,
-      intervalHours: INTERVAL_HOURS,
-      efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
-    });
+    const lpResult = optimizeStrategyWithLp(
+      indexedData,
+      {
+        batteryCapacity,
+        currentSoc,
+        targetSoc: maxTargetSoc,
+        chargePowerKW,
+        intervalHours: INTERVAL_HOURS,
+        efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
+      },
+      {
+        productionHistory: this.productionHistory || {},
+        consumptionHistory: this.gridHistory || {},
+        batteryHistory: this.batteryHistory || {},
+      },
+      {
+        lpSolver,
+        logger: this,
+      },
+    );
 
     if (lpResult) {
       const {
@@ -576,200 +589,38 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Fallback: heuristic optimization if LP fails or solver unavailable
     this.log('Using heuristic optimization (LP not available or failed)');
 
-    // Compute dynamic price thresholds (average + percentile) for classifying expensive intervals
-    const sortedPrices = indexedData.map((p) => p.total).sort((a, b) => a - b);
-    const getPercentile = (values, q) => {
-      if (!values.length) return avgPrice;
-      const pos = (values.length - 1) * q;
-      const base = Math.floor(pos);
-      const rest = pos - base;
-      if (values[base + 1] !== undefined) {
-        return values[base] + rest * (values[base + 1] - values[base]);
-      }
-      return values[base];
+    // Prepare parameters for the pure optimization function
+    const params = {
+      batteryCapacity,
+      currentSoc,
+      targetSoc: maxTargetSoc,
+      chargePowerKW,
+      intervalHours: INTERVAL_HOURS,
+      efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
+      expensivePriceFactor: this.normalizedExpensivePriceFactor,
+      minProfitEurPerKWh: (this.getSetting('min_profit_cent_per_kwh') || 8) / 100,
     };
 
-    // 70th percentile as dynamic expensive price reference
-    const p70 = getPercentile(sortedPrices, 0.7);
+    // Build history object for forecasting
+    const history = {
+      productionHistory: this.productionHistory || {},
+      consumptionHistory: this.gridHistory || {},
+      batteryHistory: this.batteryHistory || {},
+    };
 
-    // Use the higher of (avg * factor) and percentile to adapt to flat/volatile days
-    const avgFactor = this.normalizedExpensivePriceFactor;
-    const expensiveThreshold = Math.max(avgPrice * avgFactor, p70);
+    // Call the pure optimization function
+    const strategy = computeHeuristicStrategy(indexedData, params, history, { logger: this });
 
-    this.debug(`Dynamic expensive threshold: ${expensiveThreshold.toFixed(4)} €/kWh (avgFactor=${avgFactor}, p70=${p70.toFixed(4)})`);
-
-    // New approach: For each expensive interval, find the best charging opportunities before it
-    // This handles multiple cheap-expensive cycles correctly
-
-    this.log('\n=== CHRONOLOGICAL ENERGY OPTIMIZATION ===');
-
-    // Step 1: Identify expensive intervals (above dynamic threshold) where battery usage is profitable
-    const expensiveIntervals = indexedData.filter((p) => p.total > expensiveThreshold);
-
-    this.log(`Found ${expensiveIntervals.length} expensive intervals (> ${expensiveThreshold.toFixed(4)} €/kWh)`);
-
-    // Step 2: For each expensive interval, find the cheapest charging opportunities before it
-    const chargeAssignments = new Map(); // Maps charge interval index -> total energy assigned
-    const dischargeNeeds = new Map(); // Maps discharge interval index -> energy needed
-    let totalSavings = 0;
-
-    // Calculate energy demand for each expensive interval
-    for (const expInterval of expensiveIntervals) {
-      const demand = this.forecastEnergyDemand([expInterval]);
-      dischargeNeeds.set(expInterval.index, demand);
-      this.log(`Discharge ${new Date(expInterval.startsAt).toLocaleString()}: need ${demand.toFixed(2)} kWh @ ${expInterval.total.toFixed(4)} €/kWh`);
-    }
-
-    // Step 3: Assign charge energy to discharge needs optimally
-    // Strategy: Go through all discharge intervals, assign from cheapest available charges
-
-    // First, collect ALL cheap intervals (before any expensive interval)
-    const lastExpensiveIndex = expensiveIntervals.length > 0
-      ? expensiveIntervals[expensiveIntervals.length - 1].index
-      : -1;
-    const allCheapIntervals = indexedData.filter((p) => lastExpensiveIndex >= 0
-      && p.index < lastExpensiveIndex
-      && p.total <= expensiveThreshold);
-
-    // Sort by price (cheapest first)
-    allCheapIntervals.sort((a, b) => a.total - b.total);
-
-    this.log(`Found ${allCheapIntervals.length} cheap intervals to distribute energy from`);
-
-    // Track which discharge intervals actually get energy assigned
-    const assignedDischarges = new Set();
-    let totalAssignedCharge = 0;
-
-    // Check if battery can be charged (only if below target SoC)
-    const canChargeBattery = maxBatteryKWh > 0.01;
-    const currentBatteryKWh = currentSoc * batteryCapacity; // Already available energy in battery
-    let remainingBatteryEnergy = currentBatteryKWh; // Track remaining energy from current charge
-
-    this.log(`\n⚡ Battery status: ${(currentSoc * 100).toFixed(1)}% = ${currentBatteryKWh.toFixed(2)} kWh available now`);
-    if (canChargeBattery) {
-      this.log(`   → Can charge additional ${maxBatteryKWh.toFixed(2)} kWh (up to ${(maxTargetSoc * 100).toFixed(1)}%)`);
-    } else {
-      this.log('   → Already at target SoC, will only use existing charge');
-    }
-
-    // Minimum profit per kWh (in €/kWh) to consider a charge-discharge pair worthwhile
-    const minProfitEurPerKWh = (this.getSetting('min_profit_cent_per_kwh') || 8) / 100; // default: 8 ct/kWh
-
-    // When battery capacity is tight, prioritize the most expensive intervals first
-    const sortedExpensiveIntervals = [...expensiveIntervals].sort((a, b) => b.total - a.total);
-
-    // Now assign energy: for each discharge, take from existing battery charge OR cheapest available charges
-    // Priority: 1) Use existing battery charge, 2) Add new charging if needed and profitable
-    for (const expInterval of sortedExpensiveIntervals) {
-      const demandKWh = dischargeNeeds.get(expInterval.index);
-      let assignedEnergy = 0;
-
-      this.log(`\nDischarge ${new Date(expInterval.startsAt).toLocaleString()}: need ${demandKWh.toFixed(2)} kWh @ ${expInterval.total.toFixed(4)} €/kWh`);
-
-      // First, try to use existing battery charge
-      if (remainingBatteryEnergy > 0.01) {
-        const useFromBattery = Math.min(demandKWh, remainingBatteryEnergy);
-        remainingBatteryEnergy -= useFromBattery;
-        assignedEnergy += useFromBattery;
-        this.log(`  ✓ Using ${useFromBattery.toFixed(2)} kWh from existing battery charge (${remainingBatteryEnergy.toFixed(2)} kWh remaining)`);
-
-        // If existing charge covers full demand, we're done
-        if (assignedEnergy >= demandKWh - 0.01) {
-          assignedDischarges.add(expInterval.index);
-          continue;
-        }
-      }
-
-      // If we still need more energy, try to charge from cheap intervals
-      const stillNeeded = demandKWh - assignedEnergy;
-
-      if (!canChargeBattery) {
-        this.log(`  ⚠️ Skipped: Need ${stillNeeded.toFixed(2)} kWh more but battery already at target SoC`);
-        continue;
-      }
-
-      // Check if we've already reached battery capacity limit
-      if (totalAssignedCharge >= maxBatteryKWh - 0.01) {
-        this.log(`  ⚠️ Skipped: Battery capacity limit reached (${maxBatteryKWh.toFixed(2)} kWh)`);
-        break;
-      }
-
-      for (const chargeInterval of allCheapIntervals) {
-        // Skip if this charge is AFTER the discharge (chronological constraint)
-        if (chargeInterval.index >= expInterval.index) continue;
-
-        const effectiveChargePrice = chargeInterval.total * (1 + BATTERY_EFFICIENCY_LOSS);
-
-        // Check if profitable with required minimum margin
-        const priceDiff = expInterval.total - effectiveChargePrice;
-        if (priceDiff <= minProfitEurPerKWh) {
-          this.log('  Stopping: effective charge not profitable enough');
-          const logMsg = `    charge: ${effectiveChargePrice.toFixed(4)} €/kWh, `
-            + `discharge: ${expInterval.total.toFixed(4)} €/kWh, `
-            + `diff: ${priceDiff.toFixed(4)} €/kWh, `
-            + `min: ${minProfitEurPerKWh.toFixed(4)} €/kWh`;
-          this.log(logMsg);
-          break;
-        }
-
-        // How much energy is already assigned from this charge interval?
-        const alreadyAssigned = chargeAssignments.get(chargeInterval.index) || 0;
-        const remainingCapacity = energyPerInterval - alreadyAssigned;
-
-        if (remainingCapacity < 0.01) continue; // This charge interval is fully used
-
-        // How much energy do we still need for this discharge (after using existing battery)?
-        const stillNeededNow = demandKWh - assignedEnergy;
-        if (stillNeededNow < 0.01) break; // This discharge is fully covered
-
-        // Check available battery capacity
-        const remainingBatteryCapacity = maxBatteryKWh - totalAssignedCharge;
-        if (remainingBatteryCapacity < 0.01) {
-          this.log('  Stopping: Battery capacity limit reached');
-          break;
-        }
-
-        // Assign energy (limited by interval capacity, discharge need, AND battery capacity)
-        const toAssign = Math.min(remainingCapacity, stillNeededNow, remainingBatteryCapacity);
-        chargeAssignments.set(chargeInterval.index, alreadyAssigned + toAssign);
-        assignedEnergy += toAssign;
-        totalAssignedCharge += toAssign;
-
-        // Calculate savings for this assignment
-        const savings = (expInterval.total - effectiveChargePrice) * toAssign;
-        totalSavings += savings;
-
-        this.log(`  → Charge ${toAssign.toFixed(2)} kWh from ${new Date(chargeInterval.startsAt).toLocaleString()} @ ${chargeInterval.total.toFixed(4)} €/kWh (savings: €${savings.toFixed(2)})`);
-
-        if (assignedEnergy >= demandKWh - 0.01) break;
-        if (totalAssignedCharge >= maxBatteryKWh - 0.01) break;
-      }
-
-      // Mark this discharge as assigned if it got enough energy (from existing battery + new charging)
-      if (assignedEnergy >= demandKWh - 0.01) {
-        assignedDischarges.add(expInterval.index);
-      } else {
-        this.log(`  ⚠️ Skipped: Only ${assignedEnergy.toFixed(2)} kWh available, need ${demandKWh.toFixed(2)} kWh`);
-      }
-    }
-
-    // Step 4: Build final interval lists - only include profitable discharges
-    const selectedChargeIntervals = indexedData.filter((p) => chargeAssignments.has(p.index));
-    const selectedDischargeIntervals = expensiveIntervals
-      .filter((exp) => assignedDischarges.has(exp.index))
-      .map((exp) => ({ ...exp, demandKWh: dischargeNeeds.get(exp.index) }));
-    const totalChargeKWh = Array.from(chargeAssignments.values()).reduce((sum, val) => sum + val, 0);
-    const totalDischargeKWh = selectedDischargeIntervals
-      .map((exp) => exp.demandKWh)
-      .reduce((sum, val) => sum + val, 0);
-
-    this.log(`\n✅ Energy balance: ${totalChargeKWh.toFixed(2)} kWh charged = ${totalDischargeKWh.toFixed(2)} kWh needed`);
-    this.log(`   (${selectedDischargeIntervals.length}/${expensiveIntervals.length} profitable discharge intervals)`);
-    this.log(`   Battery capacity: ${totalChargeKWh.toFixed(2)}/${maxBatteryKWh.toFixed(2)} kWh (${((totalChargeKWh / maxBatteryKWh) * 100).toFixed(1)}%)`);
-
-    // Sort selected intervals chronologically
-    selectedChargeIntervals.sort((a, b) => a.index - b.index);
-    selectedDischargeIntervals.sort((a, b) => a.index - b.index);
+    // Extract results from strategy
+    const {
+      chargeIntervals: selectedChargeIntervals,
+      dischargeIntervals: selectedDischargeIntervals,
+      expensiveIntervals,
+      avgPrice: strategyAvgPrice,
+      neededKWh: totalChargeKWh,
+      forecastedDemand: totalDischargeKWh,
+      savings: totalSavings,
+    } = strategy;
 
     this.log('\n=== OPTIMIZATION RESULT ===');
     this.log(`Selected ${selectedChargeIntervals.length} charge intervals`);
@@ -797,9 +648,9 @@ class EnergyOptimizerDevice extends RCTDevice {
       chargeIntervals: selectedChargeIntervals,
       dischargeIntervals: selectedDischargeIntervals,
       expensiveIntervals,
-      avgPrice,
+      avgPrice: strategyAvgPrice,
       neededKWh: totalChargeKWh,
-      forecastedDemand: this.forecastEnergyDemand(selectedDischargeIntervals),
+      forecastedDemand: totalDischargeKWh,
       batteryStatus: {
         currentSoc,
         targetSoc: maxTargetSoc,
@@ -881,281 +732,6 @@ class EnergyOptimizerDevice extends RCTDevice {
   getIntervalOfDay(date) {
     const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
     return Math.floor(minutesSinceMidnight / 15);
-  }
-
-  /**
-   * Optimize charging/discharging using a linear program (LP)
-   * Returns { chargeIntervals, dischargeIntervals, totalChargeKWh, totalDischargeKWh, savings }
-   */
-  optimizeStrategyWithLp(indexedData, options) {
-    if (!lpSolver) {
-      this.log('LP solver not available, falling back to heuristic optimizer');
-      return null;
-    }
-
-    const {
-      batteryCapacity,
-      currentSoc,
-      maxTargetSoc,
-      chargePowerKW,
-      intervalHours,
-      efficiencyLoss,
-    } = options;
-
-    const num = indexedData.length;
-
-    // 1) Prognostizierte Nachfrage pro Intervall (kWh)
-    const demandPerInterval = indexedData.map((interval) => this.forecastEnergyDemand([interval]));
-
-    const currentEnergyKWh = currentSoc * batteryCapacity;
-    const maxEnergyKWh = maxTargetSoc * batteryCapacity;
-    const usableCapacityKWh = Math.max(0, maxEnergyKWh - currentEnergyKWh);
-
-    if (usableCapacityKWh < 0.01 && currentEnergyKWh < 0.01) {
-      this.log('LP: No usable battery capacity (empty and no headroom), skipping LP optimization');
-      return null;
-    }
-
-    const energyPerInterval = chargePowerKW * intervalHours;
-    const maxDischargePerInterval = energyPerInterval;
-
-    const etaCharge = 1 - efficiencyLoss;
-    const etaDischarge = 1 - efficiencyLoss;
-
-    this.log('\n=== LP OPTIMIZATION ===');
-    this.log(`Intervals: ${num}, Battery: ${currentEnergyKWh.toFixed(2)} kWh / ${maxEnergyKWh.toFixed(2)} kWh`);
-    this.log(`Charge/Discharge power: ${chargePowerKW} kW per interval`);
-
-    // 2) LP-Modell aufbauen
-    const model = {
-      optimize: 'totalCost',
-      opType: 'min',
-      constraints: {},
-      variables: {},
-    };
-
-    // Direct references (ESLint prefers destructuring, but this is clearer)
-    const { constraints } = model;
-    const { variables } = model;
-
-    // Baseline-Kosten (ohne Batterie) für spätere Einsparungsberechnung
-    const baselineCost = demandPerInterval.reduce(
-      (sum, d, i) => sum + d * indexedData[i].total,
-      0,
-    );
-
-    // 3) Variablen und Constraints
-    for (let t = 0; t < num; t += 1) {
-      const price = indexedData[t].total;
-      const demand = demandPerInterval[t];
-
-      const cVar = `c_${t}`;
-      const dVar = `d_${t}`;
-      const sVar = `s_${t}`;
-
-      // Variablen mit Kostenkoeffizienten:
-      // grid_t = demand + charge_t - discharge_t
-      // cost = price * grid_t = price * demand + price * charge_t - price * discharge_t
-      variables[cVar] = {
-        totalCost: price,
-      };
-      variables[dVar] = {
-        totalCost: -price,
-      };
-      variables[sVar] = {
-        totalCost: 0,
-      };
-
-      // Ladeleistung: 0 <= charge_t <= energyPerInterval
-      const cCapName = `cCap_${t}`;
-      constraints[cCapName] = { max: energyPerInterval };
-      constraints[cCapName][cVar] = 1;
-
-      // Entladeleistung: 0 <= discharge_t <= maxDischargePerInterval
-      const dCapName = `dCap_${t}`;
-      constraints[dCapName] = { max: maxDischargePerInterval };
-      constraints[dCapName][dVar] = 1;
-
-      // SoC-Obergrenze: soc_t <= maxEnergyKWh
-      const sCapName = `sCap_${t}`;
-      constraints[sCapName] = { max: maxEnergyKWh };
-      constraints[sCapName][sVar] = 1;
-
-      // Keine Netto-Einspeisung: grid_t = demand + charge - discharge >= 0
-      // => charge_t - discharge_t >= -demand
-      const gridName = `grid_${t}`;
-      constraints[gridName] = { min: -demand };
-      constraints[gridName][cVar] = 1;
-      constraints[gridName][dVar] = -1;
-
-      // Optional: nicht mehr entladen als Bedarf
-      const dDemandName = `demandLimit_${t}`;
-      constraints[dDemandName] = { max: demand };
-      constraints[dDemandName][dVar] = 1;
-    }
-
-    // 4) SoC-Dynamik mit Effizienz
-    // soc_0 = currentEnergyKWh + etaCharge * charge_0 - (1/etaDischarge) * discharge_0
-    {
-      const c0 = 'c_0';
-      const d0 = 'd_0';
-      const s0 = 's_0';
-
-      const soc0Max = 'soc0_eqMax';
-      const soc0Min = 'soc0_eqMin';
-
-      constraints[soc0Max] = { max: currentEnergyKWh };
-      constraints[soc0Max][s0] = 1;
-      constraints[soc0Max][c0] = -etaCharge;
-      constraints[soc0Max][d0] = 1 / etaDischarge;
-
-      constraints[soc0Min] = { min: currentEnergyKWh };
-      constraints[soc0Min][s0] = 1;
-      constraints[soc0Min][c0] = -etaCharge;
-      constraints[soc0Min][d0] = 1 / etaDischarge;
-    }
-
-    // Für t >= 1: soc_t = soc_{t-1} + etaCharge * charge_t - (1/etaDischarge) * discharge_t
-    for (let t = 1; t < num; t += 1) {
-      const cVar = `c_${t}`;
-      const dVar = `d_${t}`;
-      const sVar = `s_${t}`;
-      const sPrev = `s_${t - 1}`;
-
-      const socEqMax = `soc_${t}_eqMax`;
-      const socEqMin = `soc_${t}_eqMin`;
-
-      constraints[socEqMax] = { max: 0 };
-      constraints[socEqMax][sVar] = 1;
-      constraints[socEqMax][sPrev] = -1;
-      constraints[socEqMax][cVar] = -etaCharge;
-      constraints[socEqMax][dVar] = 1 / etaDischarge;
-
-      constraints[socEqMin] = { min: 0 };
-      constraints[socEqMin][sVar] = 1;
-      constraints[socEqMin][sPrev] = -1;
-      constraints[socEqMin][cVar] = -etaCharge;
-      constraints[socEqMin][dVar] = 1 / etaDischarge;
-    }
-
-    // 5) LP lösen
-    let result;
-    try {
-      result = lpSolver.Solve(model);
-    } catch (error) {
-      this.log('LP solver error, falling back to heuristic:', error.message);
-      return null;
-    }
-
-    if (!result || typeof result.totalCost !== 'number' || !result.feasible) {
-      this.log('LP solver returned no valid solution, falling back to heuristic');
-      return null;
-    }
-
-    // 6) Lösung interpretieren
-    const chargeIntervals = [];
-    const dischargeIntervals = [];
-    let totalChargeKWh = 0;
-    let totalDischargeKWh = 0;
-
-    const EPS = 0.01;
-
-    for (let t = 0; t < num; t += 1) {
-      const cVar = `c_${t}`;
-      const dVar = `d_${t}`;
-      const charge = result[cVar] || 0;
-      const discharge = result[dVar] || 0;
-
-      if (charge > EPS) {
-        totalChargeKWh += charge;
-        const chargeInterval = { ...indexedData[t], plannedEnergyKWh: charge };
-        chargeIntervals.push(chargeInterval);
-      }
-
-      if (discharge > EPS) {
-        totalDischargeKWh += discharge;
-        const dischargeInterval = { ...indexedData[t], demandKWh: discharge };
-        dischargeIntervals.push(dischargeInterval);
-      }
-    }
-
-    // Variable Kosten aus LP: price * (charge - discharge)
-    const optimizedVariableCost = result.totalCost || 0;
-    // Gesamtkosten: baseline (demand * price) + variable (charge - discharge)
-    const optimizedTotalCost = baselineCost + optimizedVariableCost;
-    const savings = Math.max(0, baselineCost - optimizedTotalCost);
-
-    this.log(`LP: baseline cost = €${baselineCost.toFixed(2)}, optimized = €${optimizedTotalCost.toFixed(2)}, savings = €${savings.toFixed(2)}`);
-    this.log(`LP: totalCharge = ${totalChargeKWh.toFixed(2)} kWh, totalDischarge = ${totalDischargeKWh.toFixed(2)} kWh`);
-    this.log('======================\n');
-
-    return {
-      chargeIntervals,
-      dischargeIntervals,
-      totalChargeKWh,
-      totalDischargeKWh,
-      savings,
-    };
-  }
-
-  /**
-   * Forecast energy demand for given intervals based on historical data
-   */
-  forecastEnergyDemand(intervals) {
-    if (!intervals.length) {
-      return 0;
-    }
-
-    let totalForecastedKWh = 0;
-    const INTERVAL_HOURS = 0.25; // 15 minutes
-
-    for (const interval of intervals) {
-      const { intervalOfDay } = interval;
-
-      // Get historical grid power data for this interval
-      const gridHistory = this.consumptionHistory[intervalOfDay] || [];
-
-      let forecastedGridKW = 0;
-
-      if (gridHistory.length > 0) {
-        // Use average of historical data (in W, convert to kW)
-        const avgGridW = gridHistory.reduce((sum, val) => sum + val, 0) / gridHistory.length;
-        forecastedGridKW = avgGridW / 1000;
-      } else {
-        // No historical data - use conservative estimate
-        // Assume average household grid import of 3 kW
-        forecastedGridKW = 3.0;
-      }
-
-      // Get expected solar production during this interval
-      const productionHistory = this.productionHistory[intervalOfDay] || [];
-      let forecastedSolarKW = 0;
-
-      if (productionHistory.length > 0) {
-        const avgSolarW = productionHistory.reduce((sum, val) => sum + val, 0) / productionHistory.length;
-        forecastedSolarKW = avgSolarW / 1000;
-      }
-
-      // Get expected battery discharge during this interval
-      const batteryHistoryData = this.batteryHistory[intervalOfDay] || [];
-      let forecastedBatteryKW = 0;
-
-      if (batteryHistoryData.length > 0) {
-        const avgBatteryW = batteryHistoryData.reduce((sum, val) => sum + val, 0) / batteryHistoryData.length;
-        forecastedBatteryKW = avgBatteryW / 1000;
-      }
-
-      // Net demand = gridPower + solarPower - batteryPower
-      // Battery power is negative when discharging, so subtracting adds to demand
-      const netDemandKW = forecastedGridKW + forecastedSolarKW - forecastedBatteryKW;
-      const energyKWh = netDemandKW * INTERVAL_HOURS;
-
-      totalForecastedKWh += energyKWh;
-    }
-
-    this.log(`Forecasted demand breakdown: ${intervals.length} expensive intervals = ${totalForecastedKWh.toFixed(2)} kWh total`);
-
-    return totalForecastedKWh;
   }
 
   /**
