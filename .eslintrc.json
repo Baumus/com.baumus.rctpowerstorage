@@ -1,3 +1,15 @@
 {
-  "extends": "athom"
+  "extends": "athom",
+  "parserOptions": {
+    "ecmaVersion": 2020
+  },
+  "env": {
+    "node": true,
+    "es2020": true
+  },
+  "rules": {
+    "node/no-unsupported-features/es-syntax": ["error", {
+      "ignores": ["modules", "dynamicImport"]
+    }]
+  }
 }

@@ -5,10 +5,30 @@ const RCTDevice = require('../../lib/rct-device');
 // Try to load LP solver from submodule
 let lpSolver;
 try {
+  // eslint-disable-next-line global-require
   lpSolver = require('../../lib/javascript-lp-solver/src/main');
 } catch (error) {
   // LP solver not available, will fall back to heuristic
 }
+
+// Constants
+const INTERVAL_MINUTES = 15;
+const INTERVAL_HOURS = INTERVAL_MINUTES / 60;
+const DEFAULT_DAILY_FETCH_HOUR = 15;
+const DEFAULT_BATTERY_CAPACITY_KWH = 9.9;
+const DEFAULT_CHARGE_POWER_KW = 6.0;
+const DEFAULT_TARGET_SOC = 85; // %
+const DEFAULT_EFFICIENCY_LOSS_PERCENT = 10; // %
+const DEFAULT_EXPENSIVE_PRICE_FACTOR = 1.05;
+const DEFAULT_MIN_PROFIT_CENT_PER_KWH = 8;
+const DEFAULT_FORECAST_DAYS = 7;
+const DEFAULT_MIN_SOC_THRESHOLD = 7;
+const GRID_SOLAR_THRESHOLD_W = -300;
+const GRID_CONSUMPTION_THRESHOLD_W = 300;
+const MAX_BATTERY_LOG_DAYS = 7;
+const INTERVALS_PER_DAY = 96;
+const MAX_BATTERY_LOG_ENTRIES = MAX_BATTERY_LOG_DAYS * INTERVALS_PER_DAY;
+const PRICE_TIMEZONE = 'Europe/Berlin';
 
 class EnergyOptimizerDevice extends RCTDevice {
 
@@ -19,6 +39,99 @@ class EnergyOptimizerDevice extends RCTDevice {
   async ensureConnection() {
     // No physical connection needed for optimizer
     return true;
+  }
+
+  /**
+   * Helper: Get setting with fallback default value
+   */
+  getSettingOrDefault(key, fallback) {
+    const value = this.getSetting(key);
+    return (value === null || value === undefined || value === '') ? fallback : value;
+  }
+
+  /**
+   * Helper: Safely get a driver by ID
+   */
+  getDriverSafe(id) {
+    try {
+      return this.homey.drivers.getDriver(id);
+    } catch (error) {
+      this.log(`Driver "${id}" not accessible:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Helper: Get device by driver and device ID
+   */
+  getDeviceById(driverId, deviceId) {
+    if (!deviceId || !deviceId.trim()) return null;
+    const driver = this.getDriverSafe(driverId);
+    if (!driver) return null;
+    const devices = driver.getDevices();
+    return devices.find((device) => device.getData().id === deviceId);
+  }
+
+  /**
+   * Helper: Safely get capability value from a device
+   */
+  getCapabilitySafe(device, capabilityId) {
+    if (!device || !device.hasCapability || !device.getCapabilityValue) return null;
+    if (!device.hasCapability(capabilityId)) return null;
+    try {
+      return device.getCapabilityValue(capabilityId);
+    } catch (error) {
+      this.log(`Failed to get capability ${capabilityId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Helper: Format date/time in localized format with timezone
+   */
+  formatLocalizedTime(date) {
+    return date.toLocaleString(this.homey.i18n.getLanguage(), {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: PRICE_TIMEZONE,
+    });
+  }
+
+  /**
+   * Helper: Check if debug logging is enabled
+   */
+  isDebugEnabled() {
+    return !!this.getSetting('debug_logging');
+  }
+
+  /**
+   * Helper: Log only when debug is enabled
+   */
+  debug(...args) {
+    if (this.isDebugEnabled()) this.log(...args);
+  }
+
+  /**
+   * Normalize and validate numeric settings
+   */
+  normalizeNumericSettings() {
+    const targetSoc = Number(this.getSettingOrDefault('target_soc', DEFAULT_TARGET_SOC));
+    this.normalizedTargetSoc = Math.min(100, Math.max(0, targetSoc)) / 100;
+
+    const chargePowerKW = Number(this.getSettingOrDefault('charge_power_kw', DEFAULT_CHARGE_POWER_KW));
+    this.normalizedChargePowerKW = chargePowerKW > 0 ? chargePowerKW : DEFAULT_CHARGE_POWER_KW;
+
+    const efficiencyLoss = Number(this.getSettingOrDefault('battery_efficiency_loss', DEFAULT_EFFICIENCY_LOSS_PERCENT));
+    this.normalizedEfficiencyLoss = Math.min(50, Math.max(0, efficiencyLoss)) / 100;
+
+    const minProfitCent = Number(this.getSettingOrDefault('min_profit_cent_per_kwh', DEFAULT_MIN_PROFIT_CENT_PER_KWH));
+    this.normalizedMinProfitEurPerKWh = minProfitCent / 100;
+
+    const expensivePriceFactor = Number(this.getSettingOrDefault('expensive_price_factor', DEFAULT_EXPENSIVE_PRICE_FACTOR));
+    this.normalizedExpensivePriceFactor = expensivePriceFactor > 0 ? expensivePriceFactor : DEFAULT_EXPENSIVE_PRICE_FACTOR;
   }
 
   async onInit() {
@@ -46,10 +159,14 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.productionHistory = this.getStoreValue('production_history') || {};
     this.consumptionHistory = this.getStoreValue('consumption_history') || {};
     this.batteryHistory = this.getStoreValue('battery_history') || {};
+    this.gridHistory = this.getStoreValue('grid_history') || {};
     this.batteryChargeLog = this.getStoreValue('battery_charge_log') || [];
     this.priceCache = [];
     this.currentStrategy = null;
     this.isDeleting = false;
+
+    // Normalize and cache numeric settings
+    this.normalizeNumericSettings();
 
     // Log current settings for debugging
     this.log('Current settings:', this.getSettings());
@@ -177,7 +294,7 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     try {
       // 1. Check for daily price fetch (at configured hour, minute 0)
-      const fetchHour = this.getSetting('daily_fetch_hour') || 15;
+      const fetchHour = this.getSettingOrDefault('daily_fetch_hour', DEFAULT_DAILY_FETCH_HOUR);
       if (currentHour === fetchHour && currentMinute === 0 && this.lastDailyFetchDate !== currentDate) {
         this.log(`🔄 Daily price fetch triggered at ${now.toLocaleTimeString('de-DE')}`);
         this.lastDailyFetchDate = currentDate;
@@ -243,8 +360,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log('📡 Fetching Tibber prices from API...');
       await this.setCapabilityValue('optimizer_status', this.homey.__('status.fetching_prices'));
 
-      const tibberToken = this.getSetting('tibber_token');
-      const tibberHomeId = this.getSetting('tibber_home_id');
+      const tibberToken = this.getSettingOrDefault('tibber_token', '');
+      const tibberHomeId = this.getSettingOrDefault('tibber_home_id', '');
 
       const query = `
         {
@@ -277,6 +394,11 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       const data = await response.json();
 
+      // Validate response structure
+      if (!data || !data.data || !data.data.viewer || !Array.isArray(data.data.viewer.homes)) {
+        throw new Error('Unexpected Tibber API response format');
+      }
+
       if (data.errors) {
         throw new Error(`Tibber API errors: ${JSON.stringify(data.errors)}`);
       }
@@ -294,7 +416,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       const now = new Date();
       // Include current and future intervals (current = started but not ended yet)
       // An interval is 15 minutes, so we subtract 15 minutes to include the current one
-      const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+      const fifteenMinutesAgo = new Date(now.getTime() - INTERVAL_MINUTES * 60 * 1000);
 
       this.priceCache = [...today, ...tomorrow]
         .filter((p) => new Date(p.startsAt) >= fifteenMinutesAgo)
@@ -341,41 +463,28 @@ class EnergyOptimizerDevice extends RCTDevice {
     }
 
     // Get battery configuration
-    const batteryDeviceId = this.getSetting('battery_device_id');
-    let batteryDevice;
-
-    try {
-      const batteryDriver = this.homey.drivers.getDriver('rct-power-storage-dc');
-      const batteryDevices = batteryDriver.getDevices();
-      batteryDevice = batteryDevices.find((device) => device.getData().id === batteryDeviceId);
-
-      if (!batteryDevice) {
-        throw new Error(`Battery device not found with ID: ${batteryDeviceId}`);
-      }
-    } catch (error) {
-      this.error('Battery device not found:', error);
+    const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
+    const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
+    
+    if (!batteryDevice) {
+      this.error(`Battery device not found with ID: ${batteryDeviceId}`);
       await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
       return;
     }
 
     let currentSoc = 0;
-    try {
-      if (batteryDevice.capabilitiesObj && batteryDevice.capabilitiesObj.measure_battery) {
-        currentSoc = (batteryDevice.capabilitiesObj.measure_battery.value || 0) / 100;
-      } else if (batteryDevice.getCapabilityValue) {
-        currentSoc = (batteryDevice.getCapabilityValue('measure_battery') || 0) / 100;
-      }
-    } catch (error) {
-      this.log('Could not read battery SoC, using 0%:', error.message);
-      currentSoc = 0;
+    const socValue = this.getCapabilitySafe(batteryDevice, 'measure_battery');
+    if (socValue !== null) {
+      currentSoc = socValue / 100;
+    } else {
+      this.log('Warning: Could not read current SoC from battery device');
     }
 
-    const batteryCapacity = parseFloat(batteryDevice.getSetting('battery_capacity')) || 9.9;
-    const chargePowerKW = this.getSetting('charge_power_kw') || 6.0;
-    const INTERVAL_HOURS = 0.25;
+    const batteryCapacity = parseFloat(batteryDevice.getSetting('battery_capacity')) || DEFAULT_BATTERY_CAPACITY_KWH;
+    const chargePowerKW = this.normalizedChargePowerKW;
     const energyPerInterval = chargePowerKW * INTERVAL_HOURS;
-    const maxTargetSoc = (this.getSetting('target_soc') || 85) / 100;
-    const BATTERY_EFFICIENCY_LOSS = (this.getSetting('battery_efficiency_loss') || 10) / 100;
+    const maxTargetSoc = this.normalizedTargetSoc;
+    const BATTERY_EFFICIENCY_LOSS = this.normalizedEfficiencyLoss;
     const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
 
     this.log('\n=== BATTERY STATUS ===');
@@ -484,10 +593,10 @@ class EnergyOptimizerDevice extends RCTDevice {
     const p70 = getPercentile(sortedPrices, 0.7);
 
     // Use the higher of (avg * factor) and percentile to adapt to flat/volatile days
-    const avgFactor = (this.getSetting('expensive_price_factor') || 1.05); // default: 5% above average
+    const avgFactor = this.normalizedExpensivePriceFactor;
     const expensiveThreshold = Math.max(avgPrice * avgFactor, p70);
 
-    this.log(`Dynamic expensive threshold: ${expensiveThreshold.toFixed(4)} €/kWh (avgFactor=${avgFactor}, p70=${p70.toFixed(4)})`);
+    this.debug(`Dynamic expensive threshold: ${expensiveThreshold.toFixed(4)} €/kWh (avgFactor=${avgFactor}, p70=${p70.toFixed(4)})`);
 
     // New approach: For each expensive interval, find the best charging opportunities before it
     // This handles multiple cheap-expensive cycles correctly
@@ -595,7 +704,11 @@ class EnergyOptimizerDevice extends RCTDevice {
         const priceDiff = expInterval.total - effectiveChargePrice;
         if (priceDiff <= minProfitEurPerKWh) {
           this.log('  Stopping: effective charge not profitable enough');
-          this.log(`    charge: ${effectiveChargePrice.toFixed(4)} €/kWh, discharge: ${expInterval.total.toFixed(4)} €/kWh, diff: ${priceDiff.toFixed(4)} €/kWh, min: ${minProfitEurPerKWh.toFixed(4)} €/kWh`);
+          const logMsg = `    charge: ${effectiveChargePrice.toFixed(4)} €/kWh, `
+            + `discharge: ${expInterval.total.toFixed(4)} €/kWh, `
+            + `diff: ${priceDiff.toFixed(4)} €/kWh, `
+            + `min: ${minProfitEurPerKWh.toFixed(4)} €/kWh`;
+          this.log(logMsg);
           break;
         }
 
@@ -1050,14 +1163,15 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   async shouldRecalculatePlan() {
     try {
-      const batteryDeviceId = this.getSetting('battery_device_id');
-      const batteryDriver = this.homey.drivers.getDriver('rct-power-storage-dc');
-      const batteryDevices = batteryDriver.getDevices();
-      const batteryDevice = batteryDevices.find((device) => device.getData().id === batteryDeviceId);
-
+      const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
+      const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
+      
       if (!batteryDevice) return false;
 
-      const currentSoc = (batteryDevice.getCapabilityValue('measure_battery') || 0) / 100;
+      const socValue = this.getCapabilitySafe(batteryDevice, 'measure_battery');
+      if (socValue === null) return false;
+      
+      const currentSoc = socValue / 100;
 
       // Store last SoC if not set
       if (this.lastOptimizationSoC === undefined) {
@@ -1065,9 +1179,10 @@ class EnergyOptimizerDevice extends RCTDevice {
         return false;
       }
 
-      // Recalculate if SoC changed by more than 10%
+      // Recalculate if SoC changed by more than threshold
       const socChange = Math.abs(currentSoc - this.lastOptimizationSoC);
-      if (socChange > 0.10) {
+      const minSocThreshold = DEFAULT_MIN_SOC_THRESHOLD / 100;
+      if (socChange > minSocThreshold) {
         this.lastOptimizationSoC = currentSoc;
         return true;
       }
@@ -1106,7 +1221,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     let currentIntervalIndex = -1;
     for (let i = 0; i < this.priceCache.length; i++) {
       const start = new Date(this.priceCache[i].startsAt);
-      const end = new Date(start.getTime() + 15 * 60 * 1000);
+      const end = new Date(start.getTime() + INTERVAL_MINUTES * 60 * 1000);
 
       if (now >= start && now < end) {
         currentIntervalIndex = i;
@@ -1144,13 +1259,12 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log(`   shouldDischarge: ${shouldDischarge}`);
 
     try {
-      const batteryDeviceId = this.getSetting('battery_device_id');
-      const batteryDriver = this.homey.drivers.getDriver('rct-power-storage-dc');
-      const batteryDevices = batteryDriver.getDevices();
-      const batteryDevice = batteryDevices.find((device) => device.getData().id === batteryDeviceId);
-
+      const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
+      const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
+      
       if (!batteryDevice) {
-        this.error('Battery device not found with ID:', batteryDeviceId);
+        this.error(`Battery device not found with ID: ${batteryDeviceId}`);
+        await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
         return;
       }
 
@@ -1217,14 +1331,10 @@ class EnergyOptimizerDevice extends RCTDevice {
           }
         }
 
-        // Hysteresis thresholds to prevent rapid mode switching
-        const SOLAR_THRESHOLD = -300; // Switch to solar mode when grid power < -300W (significant solar excess)
-        const GRID_THRESHOLD = 300; // Switch to hold mode when grid power > 300W (consuming from grid)
-
         // Use hysteresis: only switch modes when clearly above/below thresholds
-        if (gridPower < SOLAR_THRESHOLD) {
+        if (gridPower < GRID_SOLAR_THRESHOLD_W) {
           // Significant solar excess → allow battery charging from solar and discharging
-          this.log(`   → Solar excess detected (${gridPower.toFixed(0)} W < ${SOLAR_THRESHOLD} W), calling enableDefaultOperatingMode()`);
+          this.log(`   → Solar excess detected (${gridPower.toFixed(0)} W < ${GRID_SOLAR_THRESHOLD_W} W), calling enableDefaultOperatingMode()`);
           if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
             await batteryDevice.enableDefaultOperatingMode();
             this.log('   ✓ enableDefaultOperatingMode() completed successfully');
@@ -1239,9 +1349,9 @@ class EnergyOptimizerDevice extends RCTDevice {
           } else {
             this.error('❌ Battery device does not have enableDefaultOperatingMode method');
           }
-        } else if (gridPower > GRID_THRESHOLD) {
+        } else if (gridPower > GRID_CONSUMPTION_THRESHOLD_W) {
           // Consuming from grid → prevent battery discharge to avoid buying expensive power
-          this.log(`   → Grid consumption (${gridPower.toFixed(0)} W > ${GRID_THRESHOLD} W), calling disableBatteryDischarge()`);
+          this.log(`   → Grid consumption (${gridPower.toFixed(0)} W > ${GRID_CONSUMPTION_THRESHOLD_W} W), calling disableBatteryDischarge()`);
           if (typeof batteryDevice.disableBatteryDischarge === 'function') {
             await batteryDevice.disableBatteryDischarge();
             this.log('   ✓ disableBatteryDischarge() completed successfully');
@@ -1256,8 +1366,8 @@ class EnergyOptimizerDevice extends RCTDevice {
             this.error('❌ Battery device does not have disableBatteryDischarge method');
           }
         } else {
-          // In neutral zone (between -500W and +100W) → keep current mode to prevent oscillation
-          this.log(`   → Grid power in neutral zone (${gridPower.toFixed(0)} W between ${SOLAR_THRESHOLD} W and ${GRID_THRESHOLD} W)`);
+          // In neutral zone (between thresholds) → keep current mode to prevent oscillation
+          this.log(`   → Grid power in neutral zone (${gridPower.toFixed(0)} W between ${GRID_SOLAR_THRESHOLD_W} W and ${GRID_CONSUMPTION_THRESHOLD_W} W)`);
           this.log(`   → Keeping current battery mode: ${lastMode || 'NORMAL_HOLD (default)'}`);
           currentMode = lastMode || 'NORMAL_HOLD';
 
@@ -1331,9 +1441,9 @@ class EnergyOptimizerDevice extends RCTDevice {
     try {
       const now = new Date();
       const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-      const intervalIndex = Math.floor(minutesSinceMidnight / 15); // 0-95
+      const intervalIndex = Math.floor(minutesSinceMidnight / INTERVAL_MINUTES); // 0-95
 
-      const forecastDays = this.getSetting('forecast_days') || 7;
+      const forecastDays = this.getSettingOrDefault('forecast_days', DEFAULT_FORECAST_DAYS);
 
       // Collect solar production data
       const solarDeviceId = this.getSetting('solar_device_id');
@@ -1603,10 +1713,10 @@ class EnergyOptimizerDevice extends RCTDevice {
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
       }
 
-      // Cleanup old entries - keep only last 7 days (96 intervals/day * 7 = 672 entries)
-      if (this.batteryChargeLog.length > 672) {
+      // Cleanup old entries - keep only last several days
+      if (this.batteryChargeLog.length > MAX_BATTERY_LOG_ENTRIES) {
         this.log(`⚠️ Battery log reached ${this.batteryChargeLog.length} entries - removing oldest`);
-        this.batteryChargeLog = this.batteryChargeLog.slice(-672);
+        this.batteryChargeLog = this.batteryChargeLog.slice(-MAX_BATTERY_LOG_ENTRIES);
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
       }
     } catch (error) {
@@ -1622,12 +1732,12 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     const targetTime = new Date(timestamp);
     const targetMinutes = targetTime.getHours() * 60 + targetTime.getMinutes();
-    const targetInterval = Math.floor(targetMinutes / 15);
+    const targetInterval = Math.floor(targetMinutes / INTERVAL_MINUTES);
 
     for (const priceEntry of this.priceCache) {
       const entryTime = new Date(priceEntry.startsAt);
       const entryMinutes = entryTime.getHours() * 60 + entryTime.getMinutes();
-      const entryInterval = Math.floor(entryMinutes / 15);
+      const entryInterval = Math.floor(entryMinutes / INTERVAL_MINUTES);
 
       if (entryTime.getDate() === targetTime.getDate()
           && entryTime.getMonth() === targetTime.getMonth()
@@ -1733,6 +1843,9 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log('Energy Optimizer settings were changed');
     this.log('Changed keys:', changedKeys);
 
+    // Re-normalize numeric settings
+    this.normalizeNumericSettings();
+
     // Restart optimizer if critical settings changed
     const criticalSettings = [
       'tibber_token',
@@ -1747,10 +1860,19 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log('Critical settings changed, restarting optimizer...');
       await this.stopOptimizer();
       await this.startOptimizer();
-    } else if (changedKeys.includes('target_soc') || changedKeys.includes('price_threshold_percent')) {
+    } else if (changedKeys.some((key) => [
+      'target_soc',
+      'charge_power_kw',
+      'battery_efficiency_loss',
+      'expensive_price_factor',
+      'min_profit_cent_per_kwh',
+      'forecast_days',
+    ].includes(key))) {
       // Recalculate strategy if optimization parameters changed
       this.log('Optimization parameters changed, recalculating strategy...');
-      await this.calculateOptimalStrategy();
+      if (this.priceCache && this.priceCache.length > 0) {
+        await this.calculateOptimalStrategy();
+      }
     }
   }
 
