@@ -1,3 +1,6 @@
 [submodule "lib/rctjavalib"]
 	path = lib/rctjavalib
 	url = https://github.com/baumus/rctjavalib.git
+[submodule "lib/javascript-lp-solver"]
+	path = lib/javascript-lp-solver
+	url = https://github.com/JWally/jsLPSolver.git
