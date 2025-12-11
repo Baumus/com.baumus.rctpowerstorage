@@ -85,5 +85,8 @@
   },
   "4.0.0": {
     "en": "added: energy-optimizer device"
+  },
+  "4.1.0": {
+    "en": "added: LP solver for energy optimizer"
   }
 }
