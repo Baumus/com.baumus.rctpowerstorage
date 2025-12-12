@@ -10,6 +10,7 @@ jest.config.json
 
 # Documentation for testing
 TESTING.md
+docs/
 
 # Development files
 .vscode/

@@ -207,8 +207,6 @@ function computeHeuristicStrategy(indexedData, params, history, options = {}) {
     }
 
     // If more energy needed, try to charge from cheap intervals
-    const stillNeeded = demandKWh - assignedEnergy;
-
     if (!canChargeBattery) {
       continue;
     }

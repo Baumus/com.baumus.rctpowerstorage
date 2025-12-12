@@ -2,6 +2,20 @@
 
 const RCTDevice = require('../../lib/rct-device');
 const { computeHeuristicStrategy, optimizeStrategyWithLp } = require('./optimizer-core');
+const { decideBatteryMode, BATTERY_MODE } = require('./strategy-execution-core');
+const {
+  calculateBatteryEnergyCost,
+  createChargeEntry,
+  createDischargeEntry,
+  shouldClearChargeLog,
+  trimChargeLog,
+} = require('./battery-cost-core');
+const {
+  getIntervalOfDay,
+  getPriceAtTime,
+  filterCurrentAndFutureIntervals,
+  enrichPriceData,
+} = require('./time-scheduling-core');
 
 // Try to load LP solver from submodule
 let lpSolver;
@@ -415,13 +429,12 @@ class EnergyOptimizerDevice extends RCTDevice {
       const tomorrow = priceInfo.tomorrow || [];
 
       const now = new Date();
-      // Include current and future intervals (current = started but not ended yet)
-      // An interval is 15 minutes, so we subtract 15 minutes to include the current one
-      const fifteenMinutesAgo = new Date(now.getTime() - INTERVAL_MINUTES * 60 * 1000);
-
-      this.priceCache = [...today, ...tomorrow]
-        .filter((p) => new Date(p.startsAt) >= fifteenMinutesAgo)
-        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+      // Include current and future intervals using pure function
+      this.priceCache = filterCurrentAndFutureIntervals(
+        [...today, ...tomorrow],
+        now,
+        INTERVAL_MINUTES,
+      );
 
       this.log(`✅ Fetched ${this.priceCache.length} price intervals (from ${this.priceCache.length > 0 ? new Date(this.priceCache[0].startsAt).toLocaleString() : 'N/A'})`);
 
@@ -494,12 +507,8 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log(`Charge power: ${chargePowerKW} kW = ${energyPerInterval.toFixed(2)} kWh per interval`);
     this.log(`Battery efficiency loss: ${(BATTERY_EFFICIENCY_LOSS * 100).toFixed(1)}%`);
 
-    // Add index and intervalOfDay to all data
-    const indexedData = availableData.map((p, index) => ({
-      ...p,
-      index,
-      intervalOfDay: this.getIntervalOfDay(new Date(p.startsAt)),
-    }));
+    // Add index and intervalOfDay to all data using pure function
+    const indexedData = enrichPriceData(availableData, INTERVAL_MINUTES);
 
     const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
     this.log(`Average price: ${avgPrice.toFixed(4)} €/kWh`);
@@ -728,10 +737,10 @@ class EnergyOptimizerDevice extends RCTDevice {
 
   /**
    * Get interval of day (0-95) from date
+   * Delegates to pure function for testability
    */
   getIntervalOfDay(date) {
-    const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
-    return Math.floor(minutesSinceMidnight / 15);
+    return getIntervalOfDay(date, INTERVAL_MINUTES);
   }
 
   /**
@@ -778,189 +787,176 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     if (!this.getCapabilityValue('onoff')) {
       this.log('⚠️ Optimizer is disabled, skipping execution');
-      return; // Optimizer is disabled
+      return;
     }
 
     if (!this.currentStrategy) {
       this.log('⚠️ No strategy available, skipping execution');
-      return; // No strategy available
-    }
-
-    // Strategy exists - we can execute even with 0 charge intervals
-    // (we still need to control discharge/normal modes)
-    this.log(`Strategy info: ${this.currentStrategy.chargeIntervals?.length || 0} charge intervals, ${this.currentStrategy.dischargeIntervals?.length || 0} discharge intervals`);
-
-    const now = new Date();
-    this.log(`Current time: ${now.toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`);
-
-    // Find current interval index in the price cache
-    let currentIntervalIndex = -1;
-    for (let i = 0; i < this.priceCache.length; i++) {
-      const start = new Date(this.priceCache[i].startsAt);
-      const end = new Date(start.getTime() + INTERVAL_MINUTES * 60 * 1000);
-
-      if (now >= start && now < end) {
-        currentIntervalIndex = i;
-        break;
-      }
-    }
-
-    if (currentIntervalIndex === -1) {
-      this.log('⚠️ Current time not in any price interval');
-      this.log(`   Price cache length: ${this.priceCache.length}`);
-      if (this.priceCache.length > 0) {
-        this.log(`   First interval: ${new Date(this.priceCache[0].startsAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`);
-        this.log(`   Last interval: ${new Date(this.priceCache[this.priceCache.length - 1].startsAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`);
-      }
       return;
     }
 
-    this.log(`📍 Current interval index: ${currentIntervalIndex} (${new Date(this.priceCache[currentIntervalIndex].startsAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })})`);
-    this.log(`   Price: ${this.priceCache[currentIntervalIndex].total.toFixed(4)} €/kWh`);
+    this.log(`Strategy info: ${this.currentStrategy.chargeIntervals?.length || 0} charge intervals, ${this.currentStrategy.dischargeIntervals?.length || 0} discharge intervals`);
 
-    // Check if current interval is a planned charge slot
-    const shouldCharge = this.currentStrategy.chargeIntervals
-      && this.currentStrategy.chargeIntervals.some(
-        (s) => s.index === currentIntervalIndex,
-      );
+    // Get grid power for decision making
+    const gridPower = await this.collectGridPower();
 
-    // Check if current interval is a planned discharge slot (expensive interval)
-    const shouldDischarge = this.currentStrategy.dischargeIntervals
-      && this.currentStrategy.dischargeIntervals.some(
-        (s) => s.index === currentIntervalIndex,
-      );
+    // Use pure function to decide battery mode
+    const decision = decideBatteryMode({
+      now: new Date(),
+      priceCache: this.priceCache,
+      strategy: this.currentStrategy,
+      gridPower,
+      lastMode: this.lastBatteryMode,
+      thresholds: {
+        solarThreshold: GRID_SOLAR_THRESHOLD_W,
+        consumptionThreshold: GRID_CONSUMPTION_THRESHOLD_W,
+      },
+      intervalMinutes: INTERVAL_MINUTES,
+    });
 
-    this.log('Interval classification:');
-    this.log(`   shouldCharge: ${shouldCharge}`);
-    this.log(`   shouldDischarge: ${shouldDischarge}`);
+    this.log(`Decision: ${decision.mode} (interval ${decision.intervalIndex})`);
+    this.log(`Reason: ${decision.reason}`);
 
+    if (decision.mode === BATTERY_MODE.IDLE) {
+      this.log('⚠️ No action to take');
+      return;
+    }
+
+    // Execute the decided mode
     try {
       const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
       const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
-      
+
       if (!batteryDevice) {
         this.error(`Battery device not found with ID: ${batteryDeviceId}`);
         await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
         return;
       }
 
-      // Store the last mode before making changes
-      const lastMode = this.lastBatteryMode;
-      let currentMode = null;
+      await this.applyBatteryMode(batteryDevice, decision);
 
-      if (shouldCharge) {
-        this.log(`✅ CHARGE INTERVAL ACTIVE (index ${currentIntervalIndex})`);
-        this.log('   → Calling enableGridCharging() on battery device');
+      // Store current mode for next comparison
+      this.lastBatteryMode = decision.mode;
+    } catch (error) {
+      this.error('Error executing optimization strategy:', error);
+      await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+    }
+  }
 
-        // Call the battery device's enableGridCharging method
+  /**
+   * Collect current grid power from grid meter device
+   * @returns {number} Grid power in Watts (negative = solar export, positive = consumption)
+   */
+  async collectGridPower() {
+    const gridDeviceId = this.getSetting('grid_device_id');
+
+    if (!gridDeviceId || gridDeviceId.trim() === '') {
+      this.log('   No grid device configured, defaulting to 0 W');
+      return 0;
+    }
+
+    try {
+      const gridDriver = this.homey.drivers.getDriver('grid-meter');
+      const gridDevices = gridDriver.getDevices();
+      const gridDevice = gridDevices.find((device) => device.getData().id === gridDeviceId);
+
+      if (gridDevice && gridDevice.hasCapability('measure_power')) {
+        const gridPower = gridDevice.getCapabilityValue('measure_power') || 0;
+        this.log(`   Grid power: ${gridPower.toFixed(0)} W`);
+        return gridPower;
+      }
+
+      this.log('   ⚠️ Grid device found but no measure_power capability');
+      return 0;
+    } catch (error) {
+      this.log(`   ⚠️ Could not read grid power: ${error.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Apply the decided battery mode to the battery device
+   * @param {Object} batteryDevice - Battery device instance
+   * @param {Object} decision - Decision object from decideBatteryMode
+   */
+  async applyBatteryMode(batteryDevice, decision) {
+    const { mode, intervalIndex, reason } = decision;
+    const lastMode = this.lastBatteryMode;
+    const priceInfo = intervalIndex >= 0 && this.priceCache[intervalIndex]
+      ? `(${this.priceCache[intervalIndex].total.toFixed(4)} €/kWh)`
+      : '';
+
+    switch (mode) {
+      case BATTERY_MODE.CHARGE:
+        this.log(`✅ CHARGE INTERVAL ACTIVE (index ${intervalIndex})`);
+        this.log(`   → ${reason}`);
+
         if (typeof batteryDevice.enableGridCharging === 'function') {
           await batteryDevice.enableGridCharging();
           this.log('   ✓ enableGridCharging() completed successfully');
           await this.setCapabilityValue('optimizer_status', this.homey.__('status.charging'));
-          currentMode = 'CHARGE';
 
-          // Notify if mode changed
-          if (lastMode !== currentMode) {
-            const priceInfo = `(${this.priceCache[currentIntervalIndex].total.toFixed(4)} €/kWh)`;
-            await this.logBatteryModeChange(currentMode, priceInfo);
+          if (lastMode !== mode) {
+            await this.logBatteryModeChange(mode, priceInfo);
           }
         } else {
           this.error('❌ Battery device does not have enableGridCharging method');
         }
-      } else if (shouldDischarge) {
-        this.log(`⚡ DISCHARGE INTERVAL ACTIVE (index ${currentIntervalIndex})`);
-        this.log('   → Calling enableDefaultOperatingMode() on battery device');
+        break;
 
-        // Call the battery device's enableDefaultOperatingMode method
+      case BATTERY_MODE.DISCHARGE:
+        this.log(`⚡ DISCHARGE INTERVAL ACTIVE (index ${intervalIndex})`);
+        this.log(`   → ${reason}`);
+
         if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
           await batteryDevice.enableDefaultOperatingMode();
           this.log('   ✓ enableDefaultOperatingMode() completed successfully');
           await this.setCapabilityValue('optimizer_status', this.homey.__('status.discharging'));
-          currentMode = 'DISCHARGE';
 
-          // Notify if mode changed
-          if (lastMode !== currentMode) {
-            const priceInfo = `(${this.priceCache[currentIntervalIndex].total.toFixed(4)} €/kWh)`;
-            await this.logBatteryModeChange(currentMode, priceInfo);
+          if (lastMode !== mode) {
+            await this.logBatteryModeChange(mode, priceInfo);
           }
         } else {
           this.error('❌ Battery device does not have enableDefaultOperatingMode method');
         }
-      } else {
-        this.log(`🔒 NORMAL INTERVAL (index ${currentIntervalIndex})`);
+        break;
 
-        // Check grid power to decide battery behavior
-        const gridDeviceId = this.getSetting('grid_device_id');
-        let gridPower = 0;
+      case BATTERY_MODE.NORMAL_SOLAR:
+        this.log(`🔒 NORMAL INTERVAL (index ${intervalIndex})`);
+        this.log(`   → ${reason}`);
 
-        if (gridDeviceId && gridDeviceId.trim() !== '') {
-          try {
-            const gridDriver = this.homey.drivers.getDriver('grid-meter');
-            const gridDevices = gridDriver.getDevices();
-            const gridDevice = gridDevices.find((device) => device.getData().id === gridDeviceId);
-            if (gridDevice && gridDevice.hasCapability('measure_power')) {
-              gridPower = gridDevice.getCapabilityValue('measure_power') || 0;
-              this.log(`   Grid power: ${gridPower.toFixed(0)} W`);
-            }
-          } catch (error) {
-            this.log('   ⚠️ Could not read grid power, defaulting to disableBatteryDischarge');
-          }
-        }
+        if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
+          await batteryDevice.enableDefaultOperatingMode();
+          this.log('   ✓ enableDefaultOperatingMode() completed successfully');
+          await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
 
-        // Use hysteresis: only switch modes when clearly above/below thresholds
-        if (gridPower < GRID_SOLAR_THRESHOLD_W) {
-          // Significant solar excess → allow battery charging from solar and discharging
-          this.log(`   → Solar excess detected (${gridPower.toFixed(0)} W < ${GRID_SOLAR_THRESHOLD_W} W), calling enableDefaultOperatingMode()`);
-          if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
-            await batteryDevice.enableDefaultOperatingMode();
-            this.log('   ✓ enableDefaultOperatingMode() completed successfully');
-            await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
-            currentMode = 'NORMAL_SOLAR';
-
-            // Notify if mode changed
-            if (lastMode !== currentMode) {
-              const solarInfo = `(${Math.abs(gridPower).toFixed(0)} W)`;
-              await this.logBatteryModeChange(currentMode, solarInfo);
-            }
-          } else {
-            this.error('❌ Battery device does not have enableDefaultOperatingMode method');
-          }
-        } else if (gridPower > GRID_CONSUMPTION_THRESHOLD_W) {
-          // Consuming from grid → prevent battery discharge to avoid buying expensive power
-          this.log(`   → Grid consumption (${gridPower.toFixed(0)} W > ${GRID_CONSUMPTION_THRESHOLD_W} W), calling disableBatteryDischarge()`);
-          if (typeof batteryDevice.disableBatteryDischarge === 'function') {
-            await batteryDevice.disableBatteryDischarge();
-            this.log('   ✓ disableBatteryDischarge() completed successfully');
-            await this.setCapabilityValue('optimizer_status', this.homey.__('status.monitoring'));
-            currentMode = 'NORMAL_HOLD';
-
-            // Notify if mode changed
-            if (lastMode !== currentMode) {
-              await this.logBatteryModeChange(currentMode);
-            }
-          } else {
-            this.error('❌ Battery device does not have disableBatteryDischarge method');
+          if (lastMode !== mode) {
+            await this.logBatteryModeChange(mode);
           }
         } else {
-          // In neutral zone (between thresholds) → keep current mode to prevent oscillation
-          this.log(`   → Grid power in neutral zone (${gridPower.toFixed(0)} W between ${GRID_SOLAR_THRESHOLD_W} W and ${GRID_CONSUMPTION_THRESHOLD_W} W)`);
-          this.log(`   → Keeping current battery mode: ${lastMode || 'NORMAL_HOLD (default)'}`);
-          currentMode = lastMode || 'NORMAL_HOLD';
-
-          // Update status without changing battery mode
-          if (currentMode === 'NORMAL_SOLAR') {
-            await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
-          } else {
-            await this.setCapabilityValue('optimizer_status', this.homey.__('status.monitoring'));
-          }
+          this.error('❌ Battery device does not have enableDefaultOperatingMode method');
         }
-      }
+        break;
 
-      // Store current mode for next comparison
-      this.lastBatteryMode = currentMode;
-    } catch (error) {
-      this.error('Error executing optimization strategy:', error);
-      await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+      case BATTERY_MODE.NORMAL_HOLD:
+        this.log(`🔒 NORMAL INTERVAL (index ${intervalIndex})`);
+        this.log(`   → ${reason}`);
+
+        if (typeof batteryDevice.disableBatteryDischarge === 'function') {
+          await batteryDevice.disableBatteryDischarge();
+          this.log('   ✓ disableBatteryDischarge() completed successfully');
+          await this.setCapabilityValue('optimizer_status', this.homey.__('status.monitoring'));
+
+          if (lastMode !== mode) {
+            await this.logBatteryModeChange(mode);
+          }
+        } else {
+          this.error('❌ Battery device does not have disableBatteryDischarge method');
+        }
+        break;
+
+      default:
+        this.log(`⚠️ Unknown mode: ${mode}`);
     }
   }
 
@@ -1209,7 +1205,7 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       // Check if battery is considered empty - if so, clear the log
       const minSocThreshold = this.getSetting('min_soc_threshold') || 7;
-      if (currentSoc <= minSocThreshold && this.batteryChargeLog.length > 0) {
+      if (shouldClearChargeLog(currentSoc, minSocThreshold, this.batteryChargeLog.length)) {
         this.log(`🔄 Battery at ${currentSoc.toFixed(1)}% (≤ ${minSocThreshold}%) - clearing charge log (${this.batteryChargeLog.length} entries)`);
         this.batteryChargeLog = [];
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
@@ -1242,24 +1238,20 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       // Handle battery CHARGING - add to log with positive values
       if (batteryChargedKWh > 0.001) {
-        // Determine how much came from solar vs grid
-        const chargeFromSolar = Math.min(batteryChargedKWh, solarKWh);
-        const chargeFromGrid = Math.max(0, batteryChargedKWh - chargeFromSolar);
+        const chargeEntry = createChargeEntry({
+          chargedKWh: batteryChargedKWh,
+          solarKWh,
+          gridPrice: currentPrice || 0,
+          soc: currentSoc,
+          timestamp: now,
+        });
 
         const chargePrice = (currentPrice || 0).toFixed(4);
         const socInfo = currentSoc.toFixed(1);
-        this.log(`Battery charged: ${batteryChargedKWh.toFixed(3)} kWh (${chargeFromSolar.toFixed(3)} solar + ${chargeFromGrid.toFixed(3)} grid @ ${chargePrice} €/kWh) [SoC: ${socInfo}%]`);
+        this.log(`Battery charged: ${batteryChargedKWh.toFixed(3)} kWh (${chargeEntry.solarKWh.toFixed(3)} solar + ${chargeEntry.gridKWh.toFixed(3)} grid @ ${chargePrice} €/kWh) [SoC: ${socInfo}%]`);
 
-        // Add to charge log with positive values
-        this.batteryChargeLog.push({
-          timestamp: now.toISOString(),
-          type: 'charge',
-          solarKWh: chargeFromSolar,
-          gridKWh: chargeFromGrid,
-          totalKWh: batteryChargedKWh,
-          gridPrice: currentPrice || 0,
-          soc: currentSoc,
-        });
+        // Add to charge log
+        this.batteryChargeLog.push(chargeEntry);
 
         // Save to store
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
@@ -1268,22 +1260,25 @@ class EnergyOptimizerDevice extends RCTDevice {
       // Handle battery DISCHARGING - add to log with negative values
       if (batteryDischargedKWh > 0.001) {
         // Calculate average cost of energy currently in battery before discharge
-        const batteryCostBeforeDischarge = this.calculateBatteryEnergyCost();
+        const batteryCostBeforeDischarge = calculateBatteryEnergyCost(
+          this.batteryChargeLog,
+          { logger: this.log.bind(this) },
+        );
         const avgBatteryPrice = batteryCostBeforeDischarge ? batteryCostBeforeDischarge.avgPrice : 0;
 
         this.log(`Battery discharged: ${batteryDischargedKWh.toFixed(3)} kWh [SoC: ${currentSoc.toFixed(1)}%]`);
         this.log(`  Avg battery cost before discharge: ${avgBatteryPrice.toFixed(4)} €/kWh`);
         this.log(`  Current grid price: ${(currentPrice || 0).toFixed(4)} €/kWh`);
 
-        // Add to discharge log with negative values
-        this.batteryChargeLog.push({
-          timestamp: now.toISOString(),
-          type: 'discharge',
-          totalKWh: -batteryDischargedKWh, // Negative for discharge
-          gridPrice: currentPrice || 0, // Current market price during discharge
-          avgBatteryPrice, // Average cost of energy that was in battery
+        // Add to discharge log
+        const dischargeEntry = createDischargeEntry({
+          dischargedKWh: batteryDischargedKWh,
+          gridPrice: currentPrice || 0,
+          avgBatteryPrice,
           soc: currentSoc,
+          timestamp: now,
         });
+        this.batteryChargeLog.push(dischargeEntry);
 
         // Save to store
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
@@ -1292,7 +1287,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       // Cleanup old entries - keep only last several days
       if (this.batteryChargeLog.length > MAX_BATTERY_LOG_ENTRIES) {
         this.log(`⚠️ Battery log reached ${this.batteryChargeLog.length} entries - removing oldest`);
-        this.batteryChargeLog = this.batteryChargeLog.slice(-MAX_BATTERY_LOG_ENTRIES);
+        this.batteryChargeLog = trimChargeLog(this.batteryChargeLog, MAX_BATTERY_LOG_ENTRIES);
         await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
       }
     } catch (error) {
@@ -1302,102 +1297,22 @@ class EnergyOptimizerDevice extends RCTDevice {
 
   /**
    * Get current interval price from cache
+   * Delegates to pure function for testability
    */
   getCurrentIntervalPrice(timestamp) {
-    if (!this.priceCache || this.priceCache.length === 0) return null;
-
-    const targetTime = new Date(timestamp);
-    const targetMinutes = targetTime.getHours() * 60 + targetTime.getMinutes();
-    const targetInterval = Math.floor(targetMinutes / INTERVAL_MINUTES);
-
-    for (const priceEntry of this.priceCache) {
-      const entryTime = new Date(priceEntry.startsAt);
-      const entryMinutes = entryTime.getHours() * 60 + entryTime.getMinutes();
-      const entryInterval = Math.floor(entryMinutes / INTERVAL_MINUTES);
-
-      if (entryTime.getDate() === targetTime.getDate()
-          && entryTime.getMonth() === targetTime.getMonth()
-          && entryInterval === targetInterval) {
-        return priceEntry.total;
-      }
-    }
-
-    return null;
+    return getPriceAtTime(timestamp, this.priceCache, INTERVAL_MINUTES);
   }
 
   /**
    * Calculate average cost and total amount of energy currently stored in battery
-   * Sums all charge and discharge events since last battery empty state
+   * Delegates to pure function for testability
    */
   calculateBatteryEnergyCost() {
     try {
-      if (!this.batteryChargeLog || this.batteryChargeLog.length === 0) {
-        this.log('No battery charge log data available');
-        return null;
-      }
-
-      // Calculate net energy and costs by summing all charge/discharge events
-      let netSolarKWh = 0;
-      let netGridKWh = 0;
-      let totalGridCost = 0;
-
-      for (const entry of this.batteryChargeLog) {
-        if (entry.type === 'charge') {
-          // Charging: add solar and grid energy
-          netSolarKWh += entry.solarKWh || 0;
-          netGridKWh += entry.gridKWh || 0;
-          totalGridCost += (entry.gridKWh || 0) * (entry.gridPrice || 0);
-        } else if (entry.type === 'discharge') {
-          // Discharging: subtract energy proportionally from solar and grid
-          const dischargedKWh = Math.abs(entry.totalKWh || 0);
-          const totalBeforeDischarge = netSolarKWh + netGridKWh;
-
-          if (totalBeforeDischarge > 0.001) {
-            // Calculate ratio of solar vs grid before discharge
-            const solarRatio = netSolarKWh / totalBeforeDischarge;
-            const gridRatio = netGridKWh / totalBeforeDischarge;
-
-            // Subtract proportionally
-            const solarDischarged = dischargedKWh * solarRatio;
-            const gridDischarged = dischargedKWh * gridRatio;
-
-            netSolarKWh = Math.max(0, netSolarKWh - solarDischarged);
-            netGridKWh = Math.max(0, netGridKWh - gridDischarged);
-
-            // Also subtract cost proportionally
-            const avgCostBeforeDischarge = totalGridCost / totalBeforeDischarge;
-            totalGridCost = Math.max(0, totalGridCost - (dischargedKWh * avgCostBeforeDischarge));
-          }
-        }
-      }
-
-      const netTotalKWh = netSolarKWh + netGridKWh;
-
-      this.log(`Battery energy calculation from ${this.batteryChargeLog.length} log entries:`);
-      this.log(`  Net remaining: ${netTotalKWh.toFixed(3)} kWh (${netSolarKWh.toFixed(3)} solar + ${netGridKWh.toFixed(3)} grid)`);
-
-      if (netTotalKWh < 0.01) {
-        this.log('  Battery effectively empty (< 0.01 kWh)');
-        return null;
-      }
-
-      // Calculate weighted average price
-      const avgPrice = totalGridCost / netTotalKWh;
-
-      this.log(`  Weighted avg cost: ${avgPrice.toFixed(4)} €/kWh`);
-      this.log(`  Total grid cost: €${totalGridCost.toFixed(2)}`);
-      this.log(`  Solar: ${((netSolarKWh / netTotalKWh) * 100).toFixed(1)}% (free)`);
-      this.log(`  Grid: ${((netGridKWh / netTotalKWh) * 100).toFixed(1)}% @ ${(totalGridCost / netGridKWh).toFixed(4)} €/kWh`);
-
-      return {
-        avgPrice,
-        totalKWh: netTotalKWh,
-        solarKWh: netSolarKWh,
-        gridKWh: netGridKWh,
-        solarPercent: (netSolarKWh / netTotalKWh) * 100,
-        gridPercent: (netGridKWh / netTotalKWh) * 100,
-        totalCost: totalGridCost,
-      };
+      return calculateBatteryEnergyCost(
+        this.batteryChargeLog,
+        { logger: this.log.bind(this) },
+      );
     } catch (error) {
       this.error('Error calculating battery energy cost:', error);
       return null;
