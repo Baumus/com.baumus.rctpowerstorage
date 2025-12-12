@@ -135,7 +135,7 @@ function decideBatteryMode(params) {
   if (gridPower > consumptionThreshold) {
     // Consuming from grid → prevent battery discharge
     return {
-      mode: BATTERY_MODE.NORMAL_HOLD,
+      mode: BATTERY_MODE.NORMAL_SOLAR, // as quick fix until HOLD mode is implemented correctly
       intervalIndex: currentIntervalIndex,
       reason: `Grid consumption (${gridPower.toFixed(0)} W > ${consumptionThreshold} W)`,
     };
