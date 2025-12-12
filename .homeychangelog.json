@@ -100,5 +100,8 @@
   },
   "4.2.0": {
     "en": "optimized: code structure"
+  },
+  "4.2.1": {
+    "en": "fix: workaround enabling solar charging"
   }
 }
