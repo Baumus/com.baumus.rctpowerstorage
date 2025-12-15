@@ -103,5 +103,8 @@
   },
   "4.2.1": {
     "en": "fix: workaround enabling solar charging"
+  },
+  "4.2.2": {
+    "en": "fix: battery hold mode"
   }
 }
