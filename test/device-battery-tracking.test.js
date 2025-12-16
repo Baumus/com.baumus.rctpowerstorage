@@ -304,4 +304,69 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     expect(optimizer.batteryChargeLog[0].solarKWh).toBeCloseTo(2.0, 1); // All from solar (limited by battery charge)
     expect(optimizer.batteryChargeLog[0].gridKWh).toBeCloseTo(0, 1);
   });
+
+  it('should advance meter baseline even when no battery energy moved', async () => {
+    const optimizer = new EnergyOptimizerDevice();
+
+    optimizer.getSetting = jest.fn((key) => {
+      if (key === 'solar_device_id') return 'sol1';
+      if (key === 'battery_device_id') return 'bat1';
+      if (key === 'min_soc_threshold') return 7;
+      return '';
+    });
+
+    optimizer.priceCache = [
+      { startsAt: '2024-01-15T12:00:00Z', total: 0.20 },
+    ];
+
+    optimizer.batteryChargeLog = [];
+    optimizer.setStoreValue = jest.fn(async () => {});
+    optimizer.log = jest.fn();
+    optimizer.error = jest.fn();
+
+    optimizer.lastMeterReading = {
+      solar: 0,
+      grid: 0,
+      battery: 0,
+      batteryDischarged: 0,
+      timestamp: new Date('2024-01-15T11:45:00Z'),
+    };
+
+    const solarDevice = createFakeDevice({
+      id: 'sol1',
+      capabilities: { 'meter_power': true },
+      values: { 'meter_power': 5.0 },
+    });
+
+    const batteryDevice = createFakeDevice({
+      id: 'bat1',
+      capabilities: {
+        'meter_power.charged': true,
+        'meter_power.discharged': true,
+        'measure_battery': true,
+      },
+      values: {
+        'meter_power.charged': 0.0,
+        'meter_power.discharged': 0.0,
+        'measure_battery': 50,
+      },
+      settings: { battery_capacity: '10.0' },
+    });
+
+    const fakeDrivers = {
+      'solar-panel': { getDevices: () => [solarDevice] },
+      'grid-meter': { getDevices: () => [] },
+      'rct-power-storage-dc': { getDevices: () => [batteryDevice] },
+    };
+
+    optimizer.homey = {
+      drivers: { getDriver: (id) => fakeDrivers[id] },
+    };
+
+    await optimizer.trackBatteryCharging(0);
+
+    expect(optimizer.batteryChargeLog.length).toBe(0);
+    expect(optimizer.lastMeterReading.solar).toBe(5.0);
+    expect(optimizer.lastMeterReading.battery).toBe(0.0);
+  });
 });

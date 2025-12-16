@@ -48,6 +48,61 @@ const PRICE_TIMEZONE = 'Europe/Berlin';
 class EnergyOptimizerDevice extends RCTDevice {
 
   /**
+   * Queue store writes and flush them in a throttled batch.
+   * Reduces flash/IO churn from frequent setStoreValue() calls.
+   */
+  queueStoreValue(key, value, { immediate = false } = {}) {
+    if (!this._pendingStoreWrites) this._pendingStoreWrites = new Map();
+    this._pendingStoreWrites.set(key, value);
+
+    if (immediate) {
+      return this.flushStoreWrites();
+    }
+
+    this._scheduleStoreFlush();
+    return Promise.resolve();
+  }
+
+  _scheduleStoreFlush() {
+    if (this._storeWriteTimer) return;
+    const delayMs = this._storeWriteDelayMs || 2000;
+    this._storeWriteTimer = setTimeout(() => {
+      this._storeWriteTimer = null;
+      this.flushStoreWrites().catch((error) => {
+        this.error('Error flushing queued store writes:', error);
+      });
+    }, delayMs);
+  }
+
+  async flushStoreWrites() {
+    if (this._storeWriteTimer) {
+      clearTimeout(this._storeWriteTimer);
+      this._storeWriteTimer = null;
+    }
+
+    const entries = this._pendingStoreWrites ? [...this._pendingStoreWrites.entries()] : [];
+    if (!entries.length) return;
+    this._pendingStoreWrites.clear();
+
+    const failed = [];
+    await Promise.all(entries.map(async ([storeKey, storeValue]) => {
+      try {
+        await this.setStoreValue(storeKey, storeValue);
+      } catch (error) {
+        failed.push([storeKey, storeValue, error]);
+      }
+    }));
+
+    if (failed.length) {
+      failed.forEach(([storeKey, storeValue, error]) => {
+        this.error(`Failed to persist store key "${storeKey}":`, error);
+        this._pendingStoreWrites.set(storeKey, storeValue);
+      });
+      this._scheduleStoreFlush();
+    }
+  }
+
+  /**
    * onInit is called when the device is initialized.
    */
   // Override: Virtual device needs no physical connection
@@ -180,6 +235,12 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.currentStrategy = null;
     this.isDeleting = false;
 
+    // Prevent overlapping ticks + throttle store writes
+    this._updateDeviceDataRunning = false;
+    this._pendingStoreWrites = new Map();
+    this._storeWriteTimer = null;
+    this._storeWriteDelayMs = 2000;
+
     // Normalize and cache numeric settings
     this.normalizeNumericSettings();
 
@@ -279,6 +340,9 @@ class EnergyOptimizerDevice extends RCTDevice {
       await this.saveHistoricalData();
     }
 
+    // Best-effort: flush any queued writes before stopping
+    await this.flushStoreWrites();
+
     this.log('Energy Optimizer stopped');
   }
 
@@ -289,6 +353,9 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log('Energy Optimizer has been deleted');
     this.isDeleting = true;
     this.deleted = true;
+
+    // Best-effort: flush any queued writes before teardown
+    await this.flushStoreWrites();
     // Call parent to stop polling (no connection to close)
     await super.onDeleted();
   }
@@ -301,6 +368,13 @@ class EnergyOptimizerDevice extends RCTDevice {
     if (!this.getCapabilityValue('onoff')) {
       return; // Skip if optimizer is disabled
     }
+
+    // Mutex: avoid overlapping ticks if a previous tick is still running
+    if (this._updateDeviceDataRunning) {
+      this.debug('⏭️ Skipping update tick (previous still running)');
+      return;
+    }
+    this._updateDeviceDataRunning = true;
 
     const now = new Date();
     const currentHour = now.getHours();
@@ -333,6 +407,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       }
     } catch (error) {
       this.error('Error in updateDeviceData:', error);
+    } finally {
+      this._updateDeviceDataRunning = false;
     }
   }
 
@@ -1125,11 +1201,12 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   async saveHistoricalData() {
     try {
-      await this.setStoreValue('production_history', this.productionHistory);
-      await this.setStoreValue('consumption_history', this.consumptionHistory);
-      await this.setStoreValue('grid_history', this.gridHistory);
-      await this.setStoreValue('battery_history', this.batteryHistory);
-      await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
+      this.queueStoreValue('production_history', this.productionHistory);
+      this.queueStoreValue('consumption_history', this.consumptionHistory);
+      this.queueStoreValue('grid_history', this.gridHistory);
+      this.queueStoreValue('battery_history', this.batteryHistory);
+      this.queueStoreValue('battery_charge_log', this.batteryChargeLog);
+      await this.flushStoreWrites();
       this.log('Historical data saved');
     } catch (error) {
       this.error('Error saving historical data:', error);
@@ -1212,7 +1289,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       if (shouldClearChargeLog(currentSoc, minSocThreshold, this.batteryChargeLog.length)) {
         this.log(`🔄 Battery at ${currentSoc.toFixed(1)}% (≤ ${minSocThreshold}%) - clearing charge log (${this.batteryChargeLog.length} entries)`);
         this.batteryChargeLog = [];
-        await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
+        await this.queueStoreValue('battery_charge_log', this.batteryChargeLog, { immediate: true });
 
         // Reset last meter reading to avoid double-counting
         this.lastMeterReading = {
@@ -1245,12 +1322,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       const batteryChargedKWh = Math.max(0, batteryMeterNow - (lastReading.battery ?? batteryMeterNow));
       const batteryDischargedKWh = Math.max(0, batteryMeterDischargedNow - (lastReading.batteryDischarged ?? batteryMeterDischargedNow));
 
-      // If no energy moved since last sample, nothing to log
-      if (batteryChargedKWh <= 0.001 && batteryDischargedKWh <= 0.001) {
-        return;
-      }
-
-      // Store current readings for next comparison
+      // Always advance baseline, even if nothing is logged.
+      // This prevents unrelated solar/grid deltas from being attributed to a later battery charge.
       this.lastMeterReading = {
         solar: solarMeterNow,
         grid: gridMeterNow,
@@ -1258,6 +1331,11 @@ class EnergyOptimizerDevice extends RCTDevice {
         batteryDischarged: batteryMeterDischargedNow,
         timestamp: now,
       };
+
+      // If no energy moved since last sample, nothing to log
+      if (batteryChargedKWh <= 0.001 && batteryDischargedKWh <= 0.001) {
+        return;
+      }
 
       // Handle battery CHARGING - add to log with positive values
       if (batteryChargedKWh > 0.001) {
@@ -1276,8 +1354,8 @@ class EnergyOptimizerDevice extends RCTDevice {
         // Add to charge log
         this.batteryChargeLog.push(chargeEntry);
 
-        // Save to store
-        await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
+        // Save to store (batched)
+        this.queueStoreValue('battery_charge_log', this.batteryChargeLog);
       }
 
       // Handle battery DISCHARGING - add to log with negative values
@@ -1303,15 +1381,15 @@ class EnergyOptimizerDevice extends RCTDevice {
         });
         this.batteryChargeLog.push(dischargeEntry);
 
-        // Save to store
-        await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
+        // Save to store (batched)
+        this.queueStoreValue('battery_charge_log', this.batteryChargeLog);
       }
 
       // Cleanup old entries - keep only last several days
       if (this.batteryChargeLog.length > MAX_BATTERY_LOG_ENTRIES) {
         this.log(`⚠️ Battery log reached ${this.batteryChargeLog.length} entries - removing oldest`);
         this.batteryChargeLog = trimChargeLog(this.batteryChargeLog, MAX_BATTERY_LOG_ENTRIES);
-        await this.setStoreValue('battery_charge_log', this.batteryChargeLog);
+        await this.queueStoreValue('battery_charge_log', this.batteryChargeLog, { immediate: true });
       }
     } catch (error) {
       this.error('Error tracking battery charging:', error);

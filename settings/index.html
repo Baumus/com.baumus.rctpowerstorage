@@ -832,27 +832,6 @@
                     `;
                 }
                 
-                // Debug information (temporary)
-                html += `
-                    <div class="status-item" style="margin-top: 16px; padding: 12px; background: #f0f0f0; border-left: 3px solid #666; font-size: 0.85em;">
-                        <div style="font-weight: bold; margin-bottom: 8px; color: #666;">🔍 Debug Info</div>
-                        <div style="color: #666;">
-                            <div>batteryStatus exists: ${!!bat ? 'Yes' : 'No'}</div>
-                            <div>energyCost exists: ${!!bat.energyCost ? 'Yes' : 'No'}</div>
-                            ${bat.energyCost ? `
-                                <div style="margin-top: 4px;">
-                                    <div>energyCost.totalKWh: ${bat.energyCost.totalKWh?.toFixed(3) || 'N/A'}</div>
-                                    <div>energyCost.avgPrice: ${bat.energyCost.avgPrice?.toFixed(4) || 'N/A'} €/kWh</div>
-                                </div>
-                            ` : `
-                                <div style="margin-top: 4px; color: #d9534f;">
-                                    ⚠️ energyCost is null - check Homey logs for battery charge log info
-                                </div>
-                            `}
-                        </div>
-                    </div>
-                `;
-                
                 html += `
                 `;
             }
