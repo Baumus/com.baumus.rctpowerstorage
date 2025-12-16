@@ -118,5 +118,8 @@
   },
   "4.2.6": {
     "en": "fix: code optimization"
+  },
+  "4.2.7": {
+    "en": "add: stability improvements"
   }
 }
