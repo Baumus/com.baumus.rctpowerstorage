@@ -124,5 +124,8 @@
   },
   "4.2.8": {
     "en": "add: smart strategy recalc skip"
+  },
+  "4.2.9": {
+    "en": "fix: code optimization"
   }
 }
