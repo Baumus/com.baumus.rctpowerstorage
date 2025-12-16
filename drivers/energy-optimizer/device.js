@@ -1084,22 +1084,26 @@ class EnergyOptimizerDevice extends RCTDevice {
           const batteryDevices = batteryDriver.getDevices();
           const batteryDevice = batteryDevices.find((device) => device.getData().id === batteryDeviceId);
 
-          if (batteryDevice && batteryDevice.hasCapability('measure_power.battery')) {
-            const batteryPower = batteryDevice.getCapabilityValue('measure_power.battery') || 0;
+          if (batteryDevice) {
+            // Battery driver provides measure_power
+            const batteryPower = this.getCapabilitySafe(batteryDevice, 'measure_power');
 
-            if (!this.batteryHistory[intervalIndex]) {
-              this.batteryHistory[intervalIndex] = [];
-            }
+            if (typeof batteryPower === 'number' && Number.isFinite(batteryPower)) {
+              if (!this.batteryHistory[intervalIndex]) {
+                this.batteryHistory[intervalIndex] = [];
+              }
 
-            this.batteryHistory[intervalIndex].push(batteryPower);
+              this.batteryHistory[intervalIndex].push(batteryPower);
 
-            // Keep only last N days
-            if (this.batteryHistory[intervalIndex].length > forecastDays) {
-              this.batteryHistory[intervalIndex].shift();
+              // Keep only last N days
+              if (this.batteryHistory[intervalIndex].length > forecastDays) {
+                this.batteryHistory[intervalIndex].shift();
+              }
             }
 
             // Track charging events with prices for cost calculation
-            await this.trackBatteryCharging(batteryPower, intervalIndex);
+            // Always call this regardless of current power to track meter deltas
+            await this.trackBatteryCharging(batteryPower);
           }
         } catch (error) {
           // Battery device not found or error - not critical
@@ -1136,11 +1140,8 @@ class EnergyOptimizerDevice extends RCTDevice {
    * Track battery charging and discharging events with prices
    * Uses FIFO (First In, First Out) to track actual energy remaining in battery
    */
-  async trackBatteryCharging(batteryPower, intervalIndex) {
+  async trackBatteryCharging(batteryPower) {
     try {
-      // Track both charging and discharging
-      if (Math.abs(batteryPower) <= 10) return; // Only track significant power flow (>10W)
-
       // Get current price for this interval
       const now = new Date();
       const currentPrice = this.getCurrentIntervalPrice(now);
@@ -1224,11 +1225,30 @@ class EnergyOptimizerDevice extends RCTDevice {
         return;
       }
 
+      // Initialize lastMeterReading on first run to avoid false deltas
+      if (!this.lastMeterReading) {
+        this.log('📊 Initializing meter readings (first run or after restart)');
+        this.lastMeterReading = {
+          solar: solarMeterNow,
+          grid: gridMeterNow,
+          battery: batteryMeterNow,
+          batteryDischarged: batteryMeterDischargedNow,
+          timestamp: now,
+        };
+        return; // Skip first sample to establish baseline
+      }
+
       // Calculate delta since last reading
-      const lastReading = this.lastMeterReading || {};
-      const solarKWh = Math.max(0, solarMeterNow - (lastReading.solar || solarMeterNow));
-      const batteryChargedKWh = Math.max(0, batteryMeterNow - (lastReading.battery || batteryMeterNow));
-      const batteryDischargedKWh = Math.max(0, batteryMeterDischargedNow - (lastReading.batteryDischarged || batteryMeterDischargedNow));
+      // IMPORTANT: Use nullish coalescing (??) so that 0 is treated as a valid previous reading
+      const lastReading = this.lastMeterReading;
+      const solarKWh = Math.max(0, solarMeterNow - (lastReading.solar ?? solarMeterNow));
+      const batteryChargedKWh = Math.max(0, batteryMeterNow - (lastReading.battery ?? batteryMeterNow));
+      const batteryDischargedKWh = Math.max(0, batteryMeterDischargedNow - (lastReading.batteryDischarged ?? batteryMeterDischargedNow));
+
+      // If no energy moved since last sample, nothing to log
+      if (batteryChargedKWh <= 0.001 && batteryDischargedKWh <= 0.001) {
+        return;
+      }
 
       // Store current readings for next comparison
       this.lastMeterReading = {

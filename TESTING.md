@@ -23,9 +23,10 @@ The energy optimization logic has been extracted into pure, testable functions a
 - `test/time-scheduling-core.test.js` - Time/interval logic (55 tests)
 - `test/integration.test.js` - **Module integration (12 tests) ✨**
 - `test/settings-rendering.test.js` - **Settings UI data processing (29 tests) ✨**
+- `test/device-battery-tracking.test.js` - **Device battery tracking bugs (4 tests) ✨ NEW**
 - `tools/simulate-optimizer.js` - CLI simulator for manual testing
 
-**Total**: 159 unit tests + 12 integration tests + 29 UI tests = **220 tests** covering all logic
+**Total**: 159 unit tests + 12 integration tests + 29 UI tests + 4 device tests = **224 tests** covering all logic
 
 ### Core Modules Tested
 
@@ -511,6 +512,31 @@ Integration tests verify that the extracted modules work together correctly with
 - ✅ Tests updateBatteryStatus() pattern (recalculate energyCost without new strategy)
 - ✅ Validates UI would display current battery cost information
 - ✅ **Fixes bug where energyCost wasn't updated between strategy calculations**
+
+## Device Battery Tracking Tests (4 tests) ✨ NEW
+
+Tests that verify critical bugs in battery charge/discharge tracking have been fixed.
+
+### Bug 1: Missing Capability Support (1 test)
+- ✅ Tracks battery power even when only `measure_power` exists (not `measure_power.battery`)
+- ✅ Falls back to `battery_power` if neither above is available
+- ✅ **Fixes: Battery tracking never ran because capability check was too restrictive**
+
+### Bug 2: Nullish Coalescing for Meter Deltas (2 tests)
+- ✅ Logs solar charge when previous meter readings are 0 and batteryPower is ~0
+- ✅ Correctly calculates deltas when previous readings are 0 (using `??` not `||`)
+- ✅ **Fixes: Delta calculation treated 0 as "no previous value", causing delta = 0**
+
+### Bug 3: First Run Protection (1 test)
+- ✅ Initializes lastMeterReading on first run to prevent false deltas
+- ✅ Skips first sample to establish baseline
+- ✅ **Fixes: Large false deltas after app restart/device addition**
+
+### Bug Impact
+These bugs caused:
+- No battery charge/discharge tracking → empty `batteryChargeLog`
+- No actual solar/grid split → always showed "Estimated" instead of "Actual"
+- False charge entries after restart
 
 ### Integration Test Benefits
 - **End-to-end validation**: Ensures modules integrate correctly
