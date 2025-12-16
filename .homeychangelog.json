@@ -112,5 +112,8 @@
   },
   "4.2.4": {
     "en": "fix: battery status"
+  },
+  "4.2.5": {
+    "en": "fix: battery status"
   }
 }
