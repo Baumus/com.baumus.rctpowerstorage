@@ -115,5 +115,8 @@
   },
   "4.2.5": {
     "en": "fix: battery status"
+  },
+  "4.2.6": {
+    "en": "fix: code optimization"
   }
 }
