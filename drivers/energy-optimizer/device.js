@@ -196,26 +196,87 @@ class EnergyOptimizerDevice extends RCTDevice {
   }
 
   /**
-   * Helper: Safely get a driver by ID
+   * Invalidate device/driver caches (call when devices change or on error)
+   */
+  _invalidateDeviceCache(driverId = null, deviceId = null) {
+    if (!this._driverCache) this._driverCache = new Map();
+    if (!this._deviceCache) this._deviceCache = new Map();
+
+    if (driverId && deviceId) {
+      this._deviceCache.delete(`${driverId}:${deviceId}`);
+    } else if (driverId) {
+      this._driverCache.delete(driverId);
+      // Also clear all device entries for this driver
+      for (const key of this._deviceCache.keys()) {
+        if (key.startsWith(`${driverId}:`)) {
+          this._deviceCache.delete(key);
+        }
+      }
+    } else {
+      // Clear all
+      this._driverCache.clear();
+      this._deviceCache.clear();
+    }
+  }
+
+  /**
+   * Helper: Safely get a driver by ID (with TTL cache)
    */
   getDriverSafe(id) {
+    if (!this._driverCache) this._driverCache = new Map();
+    const now = Date.now();
+    const cached = this._driverCache.get(id);
+    if (cached && now < cached.expiresAt) {
+      return cached.driver;
+    }
+
     try {
-      return this.homey.drivers.getDriver(id);
+      const driver = this.homey.drivers.getDriver(id);
+      this._driverCache.set(id, { driver, expiresAt: now + this._driverCacheTtlMs });
+      return driver;
     } catch (error) {
       this.log(`Driver "${id}" not accessible:`, error.message);
+      // Negative cache: remember "not found" for shorter TTL
+      this._driverCache.set(id, { driver: null, expiresAt: now + this._negativeCacheTtlMs });
       return null;
     }
   }
 
   /**
-   * Helper: Get device by driver and device ID
+   * Helper: Get device by driver and device ID (with TTL cache)
    */
   getDeviceById(driverId, deviceId) {
     if (!deviceId || !deviceId.trim()) return null;
+
+    if (!this._deviceCache) this._deviceCache = new Map();
+    if (!this._deviceCacheTtlMs) this._deviceCacheTtlMs = 60000;
+    if (!this._negativeCacheTtlMs) this._negativeCacheTtlMs = 5000;
+
+    const cacheKey = `${driverId}:${deviceId}`;
+    const now = Date.now();
+    const cached = this._deviceCache.get(cacheKey);
+    if (cached && now < cached.expiresAt) {
+      return cached.device;
+    }
+
     const driver = this.getDriverSafe(driverId);
-    if (!driver) return null;
-    const devices = driver.getDevices();
-    return devices.find((device) => device.getData().id === deviceId);
+    if (!driver) {
+      // Negative cache for device when driver missing
+      this._deviceCache.set(cacheKey, { device: null, expiresAt: now + this._negativeCacheTtlMs });
+      return null;
+    }
+
+    try {
+      const devices = driver.getDevices();
+      const device = devices.find((d) => d.getData().id === deviceId);
+      const ttl = device ? this._deviceCacheTtlMs : this._negativeCacheTtlMs;
+      this._deviceCache.set(cacheKey, { device: device || null, expiresAt: now + ttl });
+      return device || null;
+    } catch (error) {
+      this.log(`Error getting device ${deviceId} from driver ${driverId}:`, error.message);
+      this._deviceCache.set(cacheKey, { device: null, expiresAt: now + this._negativeCacheTtlMs });
+      return null;
+    }
   }
 
   /**
@@ -258,6 +319,18 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   debug(...args) {
     if (this.isDebugEnabled()) this.log(...args);
+  }
+
+  /**
+   * Helper: Rate-limited logging per category (max once per N ms)
+   */
+  logThrottled(category, intervalMs, ...args) {
+    if (!this._logThrottle) this._logThrottle = new Map();
+    const now = Date.now();
+    const last = this._logThrottle.get(category) || 0;
+    if (now - last < intervalMs) return;
+    this._logThrottle.set(category, now);
+    this.log(...args);
   }
 
   /**
@@ -341,8 +414,19 @@ class EnergyOptimizerDevice extends RCTDevice {
     this._storeWriteTimer = null;
     this._storeWriteDelayMs = 2000;
 
+    // Device/driver lookup cache (TTL-based)
+    this._driverCache = new Map();
+    this._deviceCache = new Map();
+    this._driverCacheTtlMs = 60000; // 60s
+    this._deviceCacheTtlMs = 60000; // 60s
+    this._negativeCacheTtlMs = 5000; // 5s for not-found
+
     // Normalize and cache numeric settings
     this.normalizeNumericSettings();
+
+    // Prune histories to remove stale/invalid entries
+    const forecastDays = this.getSettingOrDefault('forecast_days', DEFAULT_FORECAST_DAYS);
+    this.pruneHistories(forecastDays);
 
     // Log current settings for debugging
     this.log('Current settings:', this.getSettings());
@@ -409,7 +493,7 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       // Run initial price fetch, optimization and data collection
       await this.fetchPricesFromTibber();
-      await this.calculateOptimalStrategy();
+      await this.calculateOptimalStrategy({ force: true });
       await this.collectCurrentData();
 
       // Execute the strategy immediately to set correct battery mode
@@ -489,6 +573,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         const ok = await this.fetchPricesFromTibber();
         if (ok) {
           this.lastDailyFetchDate = currentDate;
+          await this.calculateOptimalStrategy({ force: true });
         }
       }
 
@@ -666,10 +751,39 @@ class EnergyOptimizerDevice extends RCTDevice {
   }
 
   /**
+   * Calculate a simple hash of strategy inputs to detect changes
+   */
+  _getStrategyInputHash() {
+    const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
+    const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
+    const socValue = this.getCapabilitySafe(batteryDevice, 'measure_battery');
+    const soc = socValue !== null ? Math.round(socValue) : 0;
+
+    const priceLen = this.priceCache ? this.priceCache.length : 0;
+    const targetSoc = this.normalizedTargetSoc || 0;
+    const chargePower = this.normalizedChargePowerKW || 0;
+    const effLoss = this.normalizedEfficiencyLoss || 0;
+
+    return `${priceLen}:${soc}:${targetSoc}:${chargePower}:${effLoss}`;
+  }
+
+  /**
    * Calculate optimal charging strategy based on price data
    * Uses cached price data - does NOT fetch from API
    */
-  async calculateOptimalStrategy() {
+  async calculateOptimalStrategy({ force = false } = {}) {
+    // Skip recalc if inputs haven't changed (unless forced)
+    if (!force && this._lastStrategyInputHash) {
+      const currentHash = this._getStrategyInputHash();
+      if (currentHash === this._lastStrategyInputHash) {
+        this.debug('⏭️ Skipping strategy recalc (no input changes)');
+        return;
+      }
+      this._lastStrategyInputHash = currentHash;
+    } else if (!force) {
+      this._lastStrategyInputHash = this._getStrategyInputHash();
+    }
+
     this.log('\n🔄 Recalculating optimization strategy with current battery status...');
 
     if (!this.priceCache.length) {
@@ -1258,7 +1372,7 @@ class EnergyOptimizerDevice extends RCTDevice {
           }
         } catch (error) {
           // Solar device not found or error - not critical
-          this.log('Solar device not accessible:', error.message);
+          this.logThrottled('solar-device-error', 5 * 60 * 1000, 'Solar device not accessible:', error.message);
         }
       }
 
@@ -1286,7 +1400,7 @@ class EnergyOptimizerDevice extends RCTDevice {
           }
         } catch (error) {
           // Grid device not found or error - not critical
-          this.log('Grid device not accessible:', error.message);
+          this.logThrottled('grid-device-error', 5 * 60 * 1000, 'Grid device not accessible:', error.message);
         }
       }
 
@@ -1321,7 +1435,7 @@ class EnergyOptimizerDevice extends RCTDevice {
           }
         } catch (error) {
           // Battery device not found or error - not critical
-          this.log('Battery device not accessible:', error.message);
+          this.logThrottled('battery-device-error', 5 * 60 * 1000, 'Battery device not accessible:', error.message);
         }
       }
 
@@ -1335,10 +1449,46 @@ class EnergyOptimizerDevice extends RCTDevice {
   }
 
   /**
+   * Prune history objects: trim arrays to max days, remove empty/invalid keys
+   */
+  pruneHistories(maxDays) {
+    const historyObjects = [
+      { name: 'productionHistory', obj: this.productionHistory },
+      { name: 'consumptionHistory', obj: this.consumptionHistory },
+      { name: 'gridHistory', obj: this.gridHistory },
+      { name: 'batteryHistory', obj: this.batteryHistory },
+    ];
+
+    historyObjects.forEach(({ name, obj }) => {
+      if (!obj || typeof obj !== 'object') return;
+      const keys = Object.keys(obj);
+      keys.forEach((key) => {
+        const arr = obj[key];
+        if (!Array.isArray(arr)) {
+          delete obj[key];
+          return;
+        }
+        if (arr.length === 0) {
+          delete obj[key];
+          return;
+        }
+        // Trim to maxDays
+        if (arr.length > maxDays) {
+          obj[key] = arr.slice(-maxDays);
+        }
+      });
+    });
+  }
+
+  /**
    * Save historical data to device store
    */
   async saveHistoricalData() {
     try {
+      // Prune before saving to keep store bounded
+      const forecastDays = this.getSettingOrDefault('forecast_days', DEFAULT_FORECAST_DAYS);
+      this.pruneHistories(forecastDays);
+
       this.queueStoreValue('production_history', this.productionHistory);
       this.queueStoreValue('consumption_history', this.consumptionHistory);
       this.queueStoreValue('grid_history', this.gridHistory);
@@ -1734,7 +1884,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       // Recalculate strategy if optimization parameters changed
       this.log('Optimization parameters changed, recalculating strategy...');
       if (this.priceCache && this.priceCache.length > 0) {
-        await this.calculateOptimalStrategy();
+        await this.calculateOptimalStrategy({ force: true });
       }
     }
   }
