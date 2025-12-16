@@ -106,5 +106,8 @@
   },
   "4.2.2": {
     "en": "fix: battery hold mode"
+  },
+  "4.2.3": {
+    "en": "fixed: Battery Status Updates"
   }
 }
