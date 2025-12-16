@@ -109,5 +109,8 @@
   },
   "4.2.3": {
     "en": "fixed: Battery Status Updates"
+  },
+  "4.2.4": {
+    "en": "fix: battery status"
   }
 }
