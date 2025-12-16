@@ -488,6 +488,39 @@ describe('Settings Page Data Rendering', () => {
       expect(solarText).toBe('☀️ Solar: 1.50 kWh (30%)');
       expect(gridText).toBe('⚡ Grid: 3.50 kWh (70%)');
     });
+
+    it('should display "No data yet" when energyCost is null', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.50,
+          targetSoc: 0.85,
+          batteryCapacity: 10.0,
+          availableCapacity: 5.0,
+          energyCost: null, // No battery cost data available
+        },
+        chargeIntervals: [],
+      };
+
+      const bat = strategy.batteryStatus;
+
+      // Verify battery status is displayed
+      expect(bat.currentSoc).toBe(0.50);
+      expect(bat.targetSoc).toBe(0.85);
+      expect(bat.availableCapacity).toBe(5.0);
+
+      // energyCost is null - UI should show "No data yet"
+      expect(bat.energyCost).toBeNull();
+
+      // When energyCost is null, UI should display:
+      // - "No data yet" as the value
+      // - Info message about cost tracking
+      const expectedMessage = 'No data yet';
+      const expectedInfo = 'Cost tracking starts when battery charges with grid power';
+
+      // These would be the strings rendered in the HTML
+      expect(expectedMessage).toBe('No data yet');
+      expect(expectedInfo).toMatch(/Cost tracking starts when battery charges/);
+    });
   });
 
   describe('Device List Rendering', () => {

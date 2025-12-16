@@ -530,4 +530,84 @@ describe('Integration Tests - Light', () => {
       expect(true).toBe(true); // Always passes - we tested the flow
     });
   });
+
+  describe('Battery Status Updates', () => {
+    it('should maintain energyCost data even when strategy intervals dont change', () => {
+      // Simulate scenario: Battery charged 3 hours ago, strategy hasn't changed
+      
+      // Step 1: Create initial charge log (battery charged from grid)
+      const chargeLog = [];
+      const charge1 = createChargeEntry({
+        chargedKWh: 4.0,
+        solarKWh: 1.5,
+        gridPrice: 0.20,
+        soc: 0.64,
+        timestamp: Date.now() - 3 * 60 * 60 * 1000, // 3 hours ago
+      });
+      chargeLog.push(charge1);
+
+      // Step 2: Calculate initial battery cost
+      const initialCost = calculateBatteryEnergyCost(chargeLog);
+      expect(initialCost).not.toBeNull();
+      expect(initialCost.totalKWh).toBeCloseTo(4.0, 1);
+      expect(initialCost.avgPrice).toBeGreaterThan(0);
+      expect(initialCost.solarKWh).toBeCloseTo(1.5, 1);
+      expect(initialCost.gridKWh).toBeCloseTo(2.5, 1);
+
+      // Step 3: Simulate strategy object (as it would exist in device.js)
+      const strategy = {
+        chargeIntervals: [], // No new charging planned
+        dischargeIntervals: [],
+        expensiveIntervals: [],
+        avgPrice: 0.25,
+        neededKWh: 0,
+        batteryStatus: {
+          currentSoc: 0.64,
+          targetSoc: 0.85,
+          availableCapacity: 2.1,
+          batteryCapacity: 10.0,
+          energyCost: initialCost, // Initial cost from 3 hours ago
+        },
+      };
+
+      // Step 4: Verify initial energyCost is available
+      expect(strategy.batteryStatus.energyCost).not.toBeNull();
+      expect(strategy.batteryStatus.energyCost.avgPrice).toBeGreaterThan(0);
+
+      // Step 5: Simulate another charge event (20 minutes ago)
+      const charge2 = createChargeEntry({
+        chargedKWh: 2.0,
+        solarKWh: 0.5,
+        gridPrice: 0.18,
+        soc: 0.84,
+        timestamp: Date.now() - 20 * 60 * 1000, // 20 minutes ago
+      });
+      chargeLog.push(charge2);
+
+      // Step 6: Recalculate battery cost (this is what updateBatteryStatus() does)
+      const updatedCost = calculateBatteryEnergyCost(chargeLog);
+      expect(updatedCost).not.toBeNull();
+      expect(updatedCost.totalKWh).toBeCloseTo(6.0, 1);
+      expect(updatedCost.avgPrice).toBeGreaterThan(0);
+
+      // Step 7: Update strategy.batteryStatus (simulating updateBatteryStatus() call)
+      strategy.batteryStatus.energyCost = updatedCost;
+      strategy.batteryStatus.currentSoc = 0.84;
+
+      // Step 8: Verify updated energyCost is now available
+      expect(strategy.batteryStatus.energyCost).not.toBeNull();
+      expect(strategy.batteryStatus.energyCost.totalKWh).toBeCloseTo(6.0, 1);
+      expect(strategy.batteryStatus.energyCost.avgPrice).toBeGreaterThan(0);
+
+      // Step 9: Verify this data would be visible in UI
+      // (This is what the user would see in settings page)
+      const uiEnergyCost = strategy.batteryStatus.energyCost;
+      expect(uiEnergyCost).not.toBeNull();
+      expect(uiEnergyCost.avgPrice).toBeGreaterThan(0);
+      expect(uiEnergyCost.solarKWh).toBeGreaterThan(0);
+      expect(uiEnergyCost.gridKWh).toBeGreaterThan(0);
+      expect(uiEnergyCost.solarPercent + uiEnergyCost.gridPercent).toBeCloseTo(100, 0);
+    });
+  });
 });
+

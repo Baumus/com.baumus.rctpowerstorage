@@ -479,7 +479,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Get battery configuration
     const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
     const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
-    
+
     if (!batteryDevice) {
       this.error(`Battery device not found with ID: ${batteryDeviceId}`);
       await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
@@ -750,12 +750,12 @@ class EnergyOptimizerDevice extends RCTDevice {
     try {
       const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
       const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
-      
+
       if (!batteryDevice) return false;
 
       const socValue = this.getCapabilitySafe(batteryDevice, 'measure_battery');
       if (socValue === null) return false;
-      
+
       const currentSoc = socValue / 100;
 
       // Store last SoC if not set
@@ -837,6 +837,9 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       // Store current mode for next comparison
       this.lastBatteryMode = decision.mode;
+
+      // Update battery status in current strategy (energy cost may have changed)
+      await this.updateBatteryStatus(batteryDevice);
     } catch (error) {
       this.error('Error executing optimization strategy:', error);
       await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
@@ -1309,13 +1312,65 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   calculateBatteryEnergyCost() {
     try {
-      return calculateBatteryEnergyCost(
+      this.log('\n🔍 calculateBatteryEnergyCost called:');
+      this.log(`   batteryChargeLog length: ${this.batteryChargeLog ? this.batteryChargeLog.length : 'null/undefined'}`);
+
+      const result = calculateBatteryEnergyCost(
         this.batteryChargeLog,
         { logger: this.log.bind(this) },
       );
+
+      if (result) {
+        this.log(`   ✅ Result: ${result.totalKWh.toFixed(3)} kWh @ ${result.avgPrice.toFixed(4)} €/kWh`);
+        this.log(`      Solar: ${result.solarKWh.toFixed(2)} kWh (${result.solarPercent.toFixed(0)}%)`);
+        this.log(`      Grid: ${result.gridKWh.toFixed(2)} kWh (${result.gridPercent.toFixed(0)}%)`);
+      } else {
+        this.log('   ⚠️ Result: null (no data or battery empty)');
+      }
+
+      return result;
     } catch (error) {
       this.error('Error calculating battery energy cost:', error);
       return null;
+    }
+  }
+
+  /**
+   * Update battery status in current strategy with latest data
+   * This ensures energyCost is always current even when strategy doesn't change
+   */
+  async updateBatteryStatus(batteryDevice) {
+    if (!this.currentStrategy) {
+      return;
+    }
+
+    try {
+      // Get current battery state
+      let currentSoc = 0;
+      const socValue = this.getCapabilitySafe(batteryDevice, 'measure_battery');
+      if (socValue !== null) {
+        currentSoc = socValue / 100;
+      }
+
+      const batteryCapacity = parseFloat(batteryDevice.getSetting('battery_capacity')) || DEFAULT_BATTERY_CAPACITY_KWH;
+      const maxTargetSoc = this.normalizedTargetSoc;
+      const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
+
+      // Recalculate battery energy cost (may have changed due to charging/discharging)
+      const batteryCostInfo = this.calculateBatteryEnergyCost();
+
+      // Update batteryStatus in existing strategy
+      this.currentStrategy.batteryStatus = {
+        currentSoc,
+        targetSoc: maxTargetSoc,
+        availableCapacity: maxBatteryKWh,
+        batteryCapacity,
+        energyCost: batteryCostInfo,
+      };
+
+      this.log(`✅ Battery status updated: SoC ${(currentSoc * 100).toFixed(1)}%, energyCost: ${batteryCostInfo ? 'available' : 'null'}`);
+    } catch (error) {
+      this.error('Error updating battery status:', error);
     }
   }
 

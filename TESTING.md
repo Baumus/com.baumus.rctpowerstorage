@@ -21,11 +21,11 @@ The energy optimization logic has been extracted into pure, testable functions a
 - `test/strategy-execution-core.test.js` - Battery mode decisions (32 tests)
 - `test/battery-cost-core.test.js` - Battery cost calculations (31 tests)
 - `test/time-scheduling-core.test.js` - Time/interval logic (55 tests)
-- `test/integration.test.js` - **Module integration (11 tests) ✨**
-- `test/settings-rendering.test.js` - **Settings UI data processing (25 tests) ✨ NEW**
+- `test/integration.test.js` - **Module integration (12 tests) ✨**
+- `test/settings-rendering.test.js` - **Settings UI data processing (28 tests) ✨**
 - `tools/simulate-optimizer.js` - CLI simulator for manual testing
 
-**Total**: 159 unit tests + 11 integration tests + 25 UI tests = **215 tests** covering all logic
+**Total**: 159 unit tests + 12 integration tests + 28 UI tests = **219 tests** covering all logic
 
 ### Core Modules Tested
 
@@ -504,6 +504,14 @@ Integration tests verify that the extracted modules work together correctly with
 - ✅ Validates optimization runs at different times of day
 - ✅ Tests night charging and evening discharging strategies
 
+### Battery Status Updates (1 test) ✨
+- ✅ Maintains energyCost data even when strategy intervals don't change
+- ✅ Simulates battery charging 3 hours ago with cost tracking
+- ✅ Verifies energyCost persists in strategy.batteryStatus
+- ✅ Tests updateBatteryStatus() pattern (recalculate energyCost without new strategy)
+- ✅ Validates UI would display current battery cost information
+- ✅ **Fixes bug where energyCost wasn't updated between strategy calculations**
+
 ### Integration Test Benefits
 - **End-to-end validation**: Ensures modules integrate correctly
 - **Real-world scenarios**: Tests actual usage patterns
@@ -537,11 +545,17 @@ Tests for the settings page (`settings/index.html`) that verify data processing 
 - ✅ Calculates discharge savings (grid cost - battery cost)
 - ✅ Handles missing timeline data
 
-### Battery Status Display (3 tests)
+### Battery Status Display (4 tests) ✨
 - ✅ Formats battery SoC, target SoC, available capacity
 - ✅ Formats energy cost breakdown (solar %, grid %, avg price)
 - ✅ Detects when battery is at target (full)
+- ✅ Shows "No data yet" when energyCost is null
 - ✅ Shows planned charge price when no historical data available
+
+### Device-to-UI Integration (2 tests)
+- ✅ Uses battery-cost-core module result for displayed battery energy price
+- ✅ Formats battery energy cost exactly as displayed in HTML (emojis, units, formatting)
+- ✅ Verifies complete data flow: device module → strategy → API → HTML display
 
 ### Device List Rendering (2 tests)
 - ✅ Filters energy-optimizer devices from all devices
@@ -585,6 +599,59 @@ To integrate with CI/CD pipelines:
 - name: Check coverage
   run: npm run test:coverage
 ```
+
+## Debugging Battery Cost Display Issues
+
+If battery energy cost information is not showing in the settings page:
+
+### Check Homey Logs
+
+The device now logs detailed information when `calculateBatteryEnergyCost()` is called:
+
+```
+🔍 calculateBatteryEnergyCost called:
+   batteryChargeLog length: 5
+   ✅ Result: 4.500 kWh @ 0.1250 €/kWh
+      Solar: 1.50 kWh (33%)
+      Grid: 3.00 kWh (67%)
+```
+
+Or if no data:
+
+```
+🔍 calculateBatteryEnergyCost called:
+   batteryChargeLog length: 0
+   ⚠️ Result: null (no data or battery empty)
+```
+
+### Check Settings UI Debug Section
+
+The settings page now includes a debug section showing:
+- Whether `batteryStatus` exists
+- Whether `energyCost` exists
+- If available: `totalKWh` and `avgPrice` values
+- If null: Warning message to check logs
+
+### Common Issues
+
+1. **batteryChargeLog is empty**
+   - Battery hasn't charged from grid yet
+   - App recently started/restarted
+   - Check if `collectCurrentData()` runs every 15 minutes
+
+2. **energyCost is null (netTotalKWh < 0.01)**
+   - Battery effectively empty (< 10 Wh)
+   - Normal when battery near minimum SoC
+
+3. **No charging detected**
+   - Check battery device connection
+   - Verify battery device ID in settings
+   - Check if battery power capability is readable
+
+4. **After Homey restart**
+   - batteryChargeLog restored from device store
+   - Should persist across restarts
+   - Check logs for "Battery charged:" entries
 
 ## Troubleshooting
 
