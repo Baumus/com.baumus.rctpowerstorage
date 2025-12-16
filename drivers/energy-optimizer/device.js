@@ -47,6 +47,82 @@ const PRICE_TIMEZONE = 'Europe/Berlin';
 
 class EnergyOptimizerDevice extends RCTDevice {
 
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async _fetchWithTimeout(url, options, timeoutMs) {
+    // Prefer aborting the underlying request when supported.
+    if (typeof AbortController === 'function') {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // Fallback: race without abort.
+    return await Promise.race([
+      fetch(url, options),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Fetch timeout after ${timeoutMs}ms`)), timeoutMs)),
+    ]);
+  }
+
+  _isRetriableHttpStatus(status) {
+    return status === 429 || (status >= 500 && status <= 599);
+  }
+
+  async _fetchWithRetry(url, options, {
+    timeoutMs = 10000,
+    maxAttempts = 3,
+    baseDelayMs = 1000,
+    maxDelayMs = 15000,
+  } = {}) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this._fetchWithTimeout(url, options, timeoutMs);
+        if (!response || typeof response.ok !== 'boolean') {
+          throw new Error('Unexpected fetch response');
+        }
+
+        if (!response.ok) {
+          const status = response.status;
+          const statusText = response.statusText;
+          const error = new Error(`HTTP ${status} ${statusText}`);
+          error.httpStatus = status;
+
+          if (this._isRetriableHttpStatus(status) && attempt < maxAttempts) {
+            lastError = error;
+          } else {
+            throw error;
+          }
+        } else {
+          return response;
+        }
+      } catch (error) {
+        lastError = error;
+        const isAbort = error && (error.name === 'AbortError' || /aborted/i.test(String(error.message)));
+        const httpStatus = error && error.httpStatus;
+        const retriable = isAbort || (typeof httpStatus === 'number' && this._isRetriableHttpStatus(httpStatus));
+
+        if (!retriable || attempt >= maxAttempts) {
+          throw lastError;
+        }
+      }
+
+      const jitterMs = Math.floor(Math.random() * 250);
+      const expDelay = baseDelayMs * (2 ** (attempt - 1));
+      const delay = Math.min(maxDelayMs, expDelay + jitterMs);
+      await this._sleep(delay);
+    }
+
+    throw lastError || new Error('Fetch failed');
+  }
+
   /**
    * Queue store writes and flush them in a throttled batch.
    * Reduces flash/IO churn from frequent setStoreValue() calls.
@@ -185,6 +261,30 @@ class EnergyOptimizerDevice extends RCTDevice {
   }
 
   /**
+   * Helper: Set capability value only if it actually changed.
+   * Reduces event spam and CPU usage.
+   */
+  async setCapabilityValueIfChanged(capabilityId, nextValue, { tolerance = null } = {}) {
+    if (!this.hasCapability(capabilityId)) return false;
+
+    if (!this._capabilityLastValues) this._capabilityLastValues = new Map();
+    const cached = this._capabilityLastValues.has(capabilityId)
+      ? this._capabilityLastValues.get(capabilityId)
+      : this.getCapabilityValue(capabilityId);
+
+    const bothNumbers = typeof cached === 'number' && typeof nextValue === 'number' && Number.isFinite(cached) && Number.isFinite(nextValue);
+    const isSame = bothNumbers && typeof tolerance === 'number'
+      ? Math.abs(cached - nextValue) <= tolerance
+      : cached === nextValue;
+
+    if (isSame) return false;
+
+    await this.setCapabilityValue(capabilityId, nextValue);
+    this._capabilityLastValues.set(capabilityId, nextValue);
+    return true;
+  }
+
+  /**
    * Normalize and validate numeric settings
    */
   normalizeNumericSettings() {
@@ -217,10 +317,10 @@ class EnergyOptimizerDevice extends RCTDevice {
     await this.initializeCapabilities();
 
     // Set initial capability values
-    await this.setCapabilityValue('onoff', this.getStoreValue('optimizer_enabled') !== false);
-    await this.setCapabilityValue('optimizer_status', this.homey.__('status.initializing'));
-    await this.setCapabilityValue('next_charge_start', this.homey.__('status.not_scheduled'));
-    await this.setCapabilityValue('estimated_savings', 0);
+    await this.setCapabilityValueIfChanged('onoff', this.getStoreValue('optimizer_enabled') !== false);
+    await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.initializing'));
+    await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.not_scheduled'));
+    await this.setCapabilityValueIfChanged('estimated_savings', 0);
 
     // Register capability listeners
     this.registerCapabilityListener('onoff', this.onCapabilityOnoff.bind(this));
@@ -251,7 +351,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     if (this.getCapabilityValue('onoff')) {
       await this.startOptimizer();
     } else {
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.stopped'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.stopped'));
     }
 
     // Call parent's onInit to start polling (no connection needed)
@@ -296,12 +396,12 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.log('Starting Energy Optimizer...');
 
     try {
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.starting'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.starting'));
 
       // Validate configuration
       const config = this.validateConfiguration();
       if (!config.valid) {
-        await this.setCapabilityValue('optimizer_status', this.homey.__('status.error_config'));
+        await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.error_config'));
         this.error('Invalid configuration:', config.message);
         await this.setUnavailable(config.message);
         return;
@@ -316,13 +416,13 @@ class EnergyOptimizerDevice extends RCTDevice {
       await this.executeOptimizationStrategy();
 
       await this.setAvailable();
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.active'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.active'));
 
       this.log('✓ Energy Optimizer started successfully');
       this.log('  Polling is handled by RCTDevice.startPolling()');
     } catch (error) {
       this.error('Error starting optimizer:', error);
-      await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+      await this.setCapabilityValueIfChanged('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
       await this.setUnavailable(error.message);
     }
   }
@@ -335,8 +435,8 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     // Only update capabilities if device is not being deleted
     if (!this.isDeleting) {
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.stopped'));
-      await this.setCapabilityValue('next_charge_start', this.homey.__('status.not_scheduled'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.stopped'));
+      await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.not_scheduled'));
       await this.saveHistoricalData();
     }
 
@@ -386,8 +486,10 @@ class EnergyOptimizerDevice extends RCTDevice {
       const fetchHour = this.getSettingOrDefault('daily_fetch_hour', DEFAULT_DAILY_FETCH_HOUR);
       if (currentHour === fetchHour && currentMinute === 0 && this.lastDailyFetchDate !== currentDate) {
         this.log(`🔄 Daily price fetch triggered at ${now.toLocaleTimeString('de-DE')}`);
-        this.lastDailyFetchDate = currentDate;
-        await this.fetchPricesFromTibber();
+        const ok = await this.fetchPricesFromTibber();
+        if (ok) {
+          this.lastDailyFetchDate = currentDate;
+        }
       }
 
       // 2. Check for data collection (every 15 minutes: 0, 15, 30, 45)
@@ -448,8 +550,20 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   async fetchPricesFromTibber() {
     try {
+      // Simple circuit breaker to avoid hammering Tibber when unreachable.
+      if (!this._tibberCircuit) {
+        this._tibberCircuit = { failures: 0, nextAllowedAt: 0 };
+      }
+
+      const now = Date.now();
+      if (this._tibberCircuit.nextAllowedAt && now < this._tibberCircuit.nextAllowedAt) {
+        const waitSec = Math.ceil((this._tibberCircuit.nextAllowedAt - now) / 1000);
+        this.debug(`⏳ Tibber fetch blocked by circuit breaker (${waitSec}s remaining)`);
+        return false;
+      }
+
       this.log('📡 Fetching Tibber prices from API...');
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.fetching_prices'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.fetching_prices'));
 
       const tibberToken = this.getSettingOrDefault('tibber_token', '');
       const tibberHomeId = this.getSettingOrDefault('tibber_home_id', '');
@@ -470,13 +584,18 @@ class EnergyOptimizerDevice extends RCTDevice {
         }
       `;
 
-      const response = await fetch('https://api.tibber.com/v1-beta/gql', {
+      const response = await this._fetchWithRetry('https://api.tibber.com/v1-beta/gql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${tibberToken}`,
         },
         body: JSON.stringify({ query }),
+      }, {
+        timeoutMs: 12000,
+        maxAttempts: 3,
+        baseDelayMs: 1000,
+        maxDelayMs: 15000,
       });
 
       if (!response.ok) {
@@ -504,26 +623,45 @@ class EnergyOptimizerDevice extends RCTDevice {
       const today = priceInfo.today || [];
       const tomorrow = priceInfo.tomorrow || [];
 
-      const now = new Date();
+      const nowDate = new Date();
       // Include current and future intervals using pure function
       this.priceCache = filterCurrentAndFutureIntervals(
         [...today, ...tomorrow],
-        now,
+        nowDate,
         INTERVAL_MINUTES,
       );
 
       this.log(`✅ Fetched ${this.priceCache.length} price intervals (from ${this.priceCache.length > 0 ? new Date(this.priceCache[0].startsAt).toLocaleString() : 'N/A'})`);
 
-      await this.setCapabilityValue('optimizer_status', this.homey.__('status.active'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.active'));
       await this.setAvailable();
+
+      // Reset circuit breaker on success
+      this._tibberCircuit.failures = 0;
+      this._tibberCircuit.nextAllowedAt = 0;
+      return true;
     } catch (error) {
       this.error('Error fetching prices:', error);
-      await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+      await this.setCapabilityValueIfChanged('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+
+      // Trip circuit breaker progressively on repeated failures
+      if (!this._tibberCircuit) {
+        this._tibberCircuit = { failures: 0, nextAllowedAt: 0 };
+      }
+      this._tibberCircuit.failures += 1;
+      const failures = this._tibberCircuit.failures;
+      if (failures >= 3) {
+        const baseMs = 5 * 60 * 1000; // 5 minutes
+        const backoffMs = Math.min(6 * 60 * 60 * 1000, baseMs * (2 ** (failures - 3)));
+        this._tibberCircuit.nextAllowedAt = Date.now() + backoffMs;
+      }
 
       // Don't set unavailable for temporary API errors
       if (!error.message.includes('API error')) {
         await this.setUnavailable(error.message);
       }
+
+      return false;
     }
   }
 
@@ -548,7 +686,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     if (!availableData.length) {
       this.log('No price data available');
       this.currentStrategy = { chargeIntervals: [] };
-      await this.setCapabilityValue('next_charge_start', this.homey.__('status.no_data'));
+      await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_data'));
       return;
     }
 
@@ -558,7 +696,7 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     if (!batteryDevice) {
       this.error(`Battery device not found with ID: ${batteryDeviceId}`);
-      await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('error.battery_not_found'));
       return;
     }
 
@@ -652,8 +790,8 @@ class EnergyOptimizerDevice extends RCTDevice {
           timeZone: 'Europe/Berlin',
         });
 
-        await this.setCapabilityValue('next_charge_start', formattedTime);
-        await this.setCapabilityValue('estimated_savings', Math.round(savings * 100) / 100);
+        await this.setCapabilityValueIfChanged('next_charge_start', formattedTime);
+        await this.setCapabilityValueIfChanged('estimated_savings', Math.round(savings * 100) / 100, { tolerance: 0.01 });
 
         this.log('\n=== LP STRATEGY SUMMARY ===');
         this.log(`Charge intervals: ${chargeIntervals.length}`);
@@ -663,8 +801,8 @@ class EnergyOptimizerDevice extends RCTDevice {
         this.log(`Estimated savings: €${savings.toFixed(2)}`);
         this.log('======================\n');
       } else {
-        await this.setCapabilityValue('next_charge_start', this.homey.__('status.no_cheap_slots'));
-        await this.setCapabilityValue('estimated_savings', 0);
+        await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_cheap_slots'));
+        await this.setCapabilityValueIfChanged('estimated_savings', 0);
       }
 
       this.log('LP optimization completed successfully, skipping heuristic optimizer.');
@@ -766,8 +904,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log(`   Formatted for capability: ${formattedTime}`);
       this.log(`   Interval index: ${selectedChargeIntervals[0].index}`);
 
-      await this.setCapabilityValue('next_charge_start', formattedTime);
-      await this.setCapabilityValue('estimated_savings', Math.max(0, Math.round(totalSavings * 100) / 100));
+      await this.setCapabilityValueIfChanged('next_charge_start', formattedTime);
+      await this.setCapabilityValueIfChanged('estimated_savings', Math.max(0, Math.round(totalSavings * 100) / 100), { tolerance: 0.01 });
 
       const avgChargePrice = selectedChargeIntervals.reduce((sum, s) => sum + s.total, 0) / selectedChargeIntervals.length;
       const effectiveAvgPrice = avgChargePrice * (1 + BATTERY_EFFICIENCY_LOSS);
@@ -780,8 +918,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log('======================\n');
     } else {
       this.log('No profitable charging opportunities found');
-      await this.setCapabilityValue('next_charge_start', this.homey.__('status.no_cheap_slots'));
-      await this.setCapabilityValue('estimated_savings', 0);
+      await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_cheap_slots'));
+      await this.setCapabilityValueIfChanged('estimated_savings', 0);
     }
   }
 
@@ -905,7 +1043,7 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       if (!batteryDevice) {
         this.error(`Battery device not found with ID: ${batteryDeviceId}`);
-        await this.setCapabilityValue('optimizer_status', this.homey.__('error.battery_not_found'));
+        await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('error.battery_not_found'));
         return;
       }
 
@@ -918,7 +1056,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       await this.updateBatteryStatus(batteryDevice);
     } catch (error) {
       this.error('Error executing optimization strategy:', error);
-      await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
+      await this.setCapabilityValueIfChanged('optimizer_status', `${this.homey.__('status.error')}: ${error.message}`);
     }
   }
 
@@ -973,7 +1111,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         if (typeof batteryDevice.enableGridCharging === 'function') {
           await batteryDevice.enableGridCharging();
           this.log('   ✓ enableGridCharging() completed successfully');
-          await this.setCapabilityValue('optimizer_status', this.homey.__('status.charging'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.charging'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode, priceInfo);
@@ -990,7 +1128,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
           await batteryDevice.enableDefaultOperatingMode();
           this.log('   ✓ enableDefaultOperatingMode() completed successfully');
-          await this.setCapabilityValue('optimizer_status', this.homey.__('status.discharging'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.discharging'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode, priceInfo);
@@ -1007,7 +1145,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
           await batteryDevice.enableDefaultOperatingMode();
           this.log('   ✓ enableDefaultOperatingMode() completed successfully');
-          await this.setCapabilityValue('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
+          await this.setCapabilityValueIfChanged('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode);
@@ -1024,7 +1162,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         if (typeof batteryDevice.disableBatteryDischarge === 'function') {
           await batteryDevice.disableBatteryDischarge();
           this.log('   ✓ disableBatteryDischarge() completed successfully');
-          await this.setCapabilityValue('optimizer_status', this.homey.__('status.monitoring'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.monitoring'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode);
