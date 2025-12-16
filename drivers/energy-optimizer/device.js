@@ -64,7 +64,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     }
 
     // Fallback: race without abort.
-    return await Promise.race([
+    return Promise.race([
       fetch(url, options),
       new Promise((_, reject) => setTimeout(() => reject(new Error(`Fetch timeout after ${timeoutMs}ms`)), timeoutMs)),
     ]);
@@ -90,8 +90,8 @@ class EnergyOptimizerDevice extends RCTDevice {
         }
 
         if (!response.ok) {
-          const status = response.status;
-          const statusText = response.statusText;
+          const { status } = response;
+          const { statusText } = response;
           const error = new Error(`HTTP ${status} ${statusText}`);
           error.httpStatus = status;
 
@@ -734,7 +734,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         this._tibberCircuit = { failures: 0, nextAllowedAt: 0 };
       }
       this._tibberCircuit.failures += 1;
-      const failures = this._tibberCircuit.failures;
+      const { failures } = this._tibberCircuit;
       if (failures >= 3) {
         const baseMs = 5 * 60 * 1000; // 5 minutes
         const backoffMs = Math.min(6 * 60 * 60 * 1000, baseMs * (2 ** (failures - 3)));
@@ -1733,7 +1733,7 @@ class EnergyOptimizerDevice extends RCTDevice {
   /**
    * Estimate battery energy cost when charge log is unavailable
    * Uses default price based on current price data or planned charge intervals
-   * 
+   *
    * @param {number} currentSoc - Current state of charge (0-1)
    * @param {number} batteryCapacity - Battery capacity in kWh
    * @returns {Object|null} Estimated energy cost breakdown
@@ -1755,9 +1755,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         const sum = this.currentStrategy.chargeIntervals.reduce((acc, interval) => acc + (interval.total || 0), 0);
         estimatedPrice = sum / this.currentStrategy.chargeIntervals.length;
         this.log(`   Using avg planned charge price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
-      }
+
       // Option 2: Use average of recent price data
-      else if (this.priceCache && this.priceCache.length > 0) {
+      } else if (this.priceCache && this.priceCache.length > 0) {
         const recentPrices = this.priceCache.slice(0, Math.min(96, this.priceCache.length)); // Last 24h
         const sum = recentPrices.reduce((acc, p) => acc + (p.total || 0), 0);
         estimatedPrice = sum / recentPrices.length;
@@ -1776,7 +1776,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       const totalCost = gridKWh * estimatedPrice;
       const weightedAvgPrice = totalCost / totalKWh;
 
-      this.log(`   📊 Estimated battery cost (source unknown):`);
+      this.log('   📊 Estimated battery cost (source unknown):');
       this.log(`      Total: ${totalKWh.toFixed(2)} kWh @ ${weightedAvgPrice.toFixed(4)} €/kWh (estimated)`);
       this.log(`      Assumed: ${gridKWh.toFixed(2)} kWh grid (${estimatedGridPercent}%) + ${solarKWh.toFixed(2)} kWh solar (${estimatedSolarPercent}%)`);
 
