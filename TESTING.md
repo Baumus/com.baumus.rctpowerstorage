@@ -22,10 +22,10 @@ The energy optimization logic has been extracted into pure, testable functions a
 - `test/battery-cost-core.test.js` - Battery cost calculations (31 tests)
 - `test/time-scheduling-core.test.js` - Time/interval logic (55 tests)
 - `test/integration.test.js` - **Module integration (12 tests) ✨**
-- `test/settings-rendering.test.js` - **Settings UI data processing (28 tests) ✨**
+- `test/settings-rendering.test.js` - **Settings UI data processing (29 tests) ✨**
 - `tools/simulate-optimizer.js` - CLI simulator for manual testing
 
-**Total**: 159 unit tests + 12 integration tests + 28 UI tests = **219 tests** covering all logic
+**Total**: 159 unit tests + 12 integration tests + 29 UI tests = **220 tests** covering all logic
 
 ### Core Modules Tested
 
@@ -519,7 +519,7 @@ Integration tests verify that the extracted modules work together correctly with
 - **Fast execution**: No Homey SDK required (~1 second total)
 - **Confidence**: Validates complete system behavior
 
-## Settings UI Data Processing Tests (25 tests) ✨
+## Settings UI Data Processing Tests (29 tests) ✨
 
 Tests for the settings page (`settings/index.html`) that verify data processing and rendering logic works correctly. These tests validate the data transformations that happen in the browser without requiring a full DOM environment.
 
@@ -545,11 +545,12 @@ Tests for the settings page (`settings/index.html`) that verify data processing 
 - ✅ Calculates discharge savings (grid cost - battery cost)
 - ✅ Handles missing timeline data
 
-### Battery Status Display (4 tests) ✨
+### Battery Status Display (5 tests) ✨
 - ✅ Formats battery SoC, target SoC, available capacity
 - ✅ Formats energy cost breakdown (solar %, grid %, avg price)
 - ✅ Detects when battery is at target (full)
 - ✅ Shows "No data yet" when energyCost is null
+- ✅ **Shows estimated cost with warning when source unknown (isEstimated flag)**
 - ✅ Shows planned charge price when no historical data available
 
 ### Device-to-UI Integration (2 tests)

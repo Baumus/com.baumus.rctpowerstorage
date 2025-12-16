@@ -521,6 +521,52 @@ describe('Settings Page Data Rendering', () => {
       expect(expectedMessage).toBe('No data yet');
       expect(expectedInfo).toMatch(/Cost tracking starts when battery charges/);
     });
+
+    it('should display estimated battery cost with warning when isEstimated flag is set', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.73,
+          targetSoc: 0.85,
+          batteryCapacity: 10.0,
+          availableCapacity: 1.2,
+          energyCost: {
+            avgPrice: 0.1400, // Estimated price based on planned charges
+            totalKWh: 7.3,
+            solarKWh: 2.19, // 30% assumed solar
+            gridKWh: 5.11,  // 70% assumed grid
+            solarPercent: 30,
+            gridPercent: 70,
+            totalCost: 0.7154,
+            gridOnlyAvgPrice: 0.1400,
+            isEstimated: true, // Flag indicating this is estimated
+          },
+        },
+      };
+
+      const bat = strategy.batteryStatus;
+      const cost = bat.energyCost;
+
+      // Verify estimated cost is displayed
+      expect(cost.isEstimated).toBe(true);
+      expect(cost.avgPrice).toBe(0.1400);
+      expect(cost.totalKWh).toBe(7.3);
+
+      // UI should show:
+      // - Label: "💰 Avg. Battery Energy Cost (Estimated):"
+      // - Warning: "⚠️ Source unknown - using estimated price"
+      // - Values with estimated breakdown
+      const label = '💰 Avg. Battery Energy Cost (Estimated):';
+      const warning = '⚠️ Source unknown - using estimated price';
+      const avgPriceText = `${cost.avgPrice.toFixed(4)} €/kWh`;
+      const solarText = `☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)`;
+      const gridText = `⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)`;
+
+      expect(label).toMatch(/Estimated/);
+      expect(warning).toMatch(/Source unknown/);
+      expect(avgPriceText).toBe('0.1400 €/kWh');
+      expect(solarText).toBe('☀️ Solar: 2.19 kWh (30%)');
+      expect(gridText).toBe('⚡ Grid: 5.11 kWh (70%)');
+    });
   });
 
   describe('Device List Rendering', () => {

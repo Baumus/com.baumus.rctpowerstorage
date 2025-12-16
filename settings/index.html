@@ -777,13 +777,18 @@
                 // Display battery energy cost information
                 if (bat.energyCost) {
                     const cost = bat.energyCost;
+                    const isEstimated = cost.isEstimated || false;
+                    const label = isEstimated ? '💰 Avg. Battery Energy Cost (Estimated):' : '💰 Avg. Battery Energy Cost (Actual):';
+                    const subtitle = isEstimated ? '⚠️ Source unknown - using estimated price' : '';
+                    
                     html += `
-                        <div class="status-item" style="margin-bottom: 16px;">
+                        <div class="status-item" style="margin-bottom: 16px; ${isEstimated ? 'opacity: 0.85;' : ''}">
                             <div style="width: 100%;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span class="status-label">💰 Avg. Battery Energy Cost (Actual):</span>
+                                    <span class="status-label">${label}</span>
                                     <span class="status-value">${cost.avgPrice.toFixed(4)} €/kWh</span>
                                 </div>
+                                ${subtitle ? `<div style="font-size: 0.85em; color: #f39c12; margin-bottom: 4px;">${subtitle}</div>` : ''}
                                 <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #888; margin-top: 4px;">
                                     <span>☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)</span>
                                     <span>⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)</span>

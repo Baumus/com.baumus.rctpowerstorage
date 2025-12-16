@@ -1315,6 +1315,15 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log('\n🔍 calculateBatteryEnergyCost called:');
       this.log(`   batteryChargeLog length: ${this.batteryChargeLog ? this.batteryChargeLog.length : 'null/undefined'}`);
 
+      // Show first and last entries for debugging
+      if (this.batteryChargeLog && this.batteryChargeLog.length > 0) {
+        this.log(`   First entry: ${JSON.stringify(this.batteryChargeLog[0]).substring(0, 150)}...`);
+        if (this.batteryChargeLog.length > 1) {
+          const lastIdx = this.batteryChargeLog.length - 1;
+          this.log(`   Last entry: ${JSON.stringify(this.batteryChargeLog[lastIdx]).substring(0, 150)}...`);
+        }
+      }
+
       const result = calculateBatteryEnergyCost(
         this.batteryChargeLog,
         { logger: this.log.bind(this) },
@@ -1331,6 +1340,73 @@ class EnergyOptimizerDevice extends RCTDevice {
       return result;
     } catch (error) {
       this.error('Error calculating battery energy cost:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Estimate battery energy cost when charge log is unavailable
+   * Uses default price based on current price data or planned charge intervals
+   * 
+   * @param {number} currentSoc - Current state of charge (0-1)
+   * @param {number} batteryCapacity - Battery capacity in kWh
+   * @returns {Object|null} Estimated energy cost breakdown
+   */
+  estimateBatteryEnergyCost(currentSoc, batteryCapacity) {
+    try {
+      // Calculate actual energy stored in battery
+      const totalKWh = currentSoc * batteryCapacity;
+
+      if (totalKWh < 0.01) {
+        return null;
+      }
+
+      // Determine default price for unknown energy source
+      let estimatedPrice = 0.20; // Fallback: typical German electricity price
+
+      // Option 1: Use average price from planned charge intervals (best estimate)
+      if (this.currentStrategy?.chargeIntervals && this.currentStrategy.chargeIntervals.length > 0) {
+        const sum = this.currentStrategy.chargeIntervals.reduce((acc, interval) => acc + (interval.total || 0), 0);
+        estimatedPrice = sum / this.currentStrategy.chargeIntervals.length;
+        this.log(`   Using avg planned charge price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
+      }
+      // Option 2: Use average of recent price data
+      else if (this.priceCache && this.priceCache.length > 0) {
+        const recentPrices = this.priceCache.slice(0, Math.min(96, this.priceCache.length)); // Last 24h
+        const sum = recentPrices.reduce((acc, p) => acc + (p.total || 0), 0);
+        estimatedPrice = sum / recentPrices.length;
+        this.log(`   Using avg recent price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
+      } else {
+        this.log(`   Using fallback price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
+      }
+
+      // Assume unknown source (could be mix of grid and solar, but we don't know)
+      // Conservative approach: assume mostly grid with some solar
+      const estimatedGridPercent = 70; // Conservative estimate
+      const estimatedSolarPercent = 30; // Optimistic solar contribution
+
+      const gridKWh = totalKWh * (estimatedGridPercent / 100);
+      const solarKWh = totalKWh * (estimatedSolarPercent / 100);
+      const totalCost = gridKWh * estimatedPrice;
+      const weightedAvgPrice = totalCost / totalKWh;
+
+      this.log(`   📊 Estimated battery cost (source unknown):`);
+      this.log(`      Total: ${totalKWh.toFixed(2)} kWh @ ${weightedAvgPrice.toFixed(4)} €/kWh (estimated)`);
+      this.log(`      Assumed: ${gridKWh.toFixed(2)} kWh grid (${estimatedGridPercent}%) + ${solarKWh.toFixed(2)} kWh solar (${estimatedSolarPercent}%)`);
+
+      return {
+        avgPrice: weightedAvgPrice,
+        totalKWh,
+        solarKWh,
+        gridKWh,
+        solarPercent: estimatedSolarPercent,
+        gridPercent: estimatedGridPercent,
+        totalCost,
+        gridOnlyAvgPrice: estimatedPrice,
+        isEstimated: true, // Flag to indicate this is estimated, not tracked
+      };
+    } catch (error) {
+      this.error('Error estimating battery energy cost:', error);
       return null;
     }
   }
@@ -1357,7 +1433,12 @@ class EnergyOptimizerDevice extends RCTDevice {
       const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
 
       // Recalculate battery energy cost (may have changed due to charging/discharging)
-      const batteryCostInfo = this.calculateBatteryEnergyCost();
+      let batteryCostInfo = this.calculateBatteryEnergyCost();
+
+      // If no cost data but battery has charge, estimate cost for unknown energy
+      if (!batteryCostInfo && currentSoc > 0.05) {
+        batteryCostInfo = this.estimateBatteryEnergyCost(currentSoc, batteryCapacity);
+      }
 
       // Update batteryStatus in existing strategy
       this.currentStrategy.batteryStatus = {
