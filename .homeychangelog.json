@@ -127,5 +127,8 @@
   },
   "4.2.9": {
     "en": "fix: code optimization"
+  },
+  "4.2.10": {
+    "en": "fix: grid meter handling"
   }
 }
