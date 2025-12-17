@@ -1517,7 +1517,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       const batteryDeviceId = this.getSetting('battery_device_id');
 
       let solarMeterNow = 0;
-      let gridMeterNow = 0;
+      let gridImportedNow = 0;
+      let gridExportedNow = 0;
       let batteryMeterNow = 0;
       let batteryMeterDischargedNow = 0;
       let currentSoc = 0;
@@ -1536,14 +1537,23 @@ class EnergyOptimizerDevice extends RCTDevice {
         }
       }
 
-      // Get grid meter reading (total import)
+      // Get grid meter readings (import/export)
       if (gridDeviceId && gridDeviceId.trim() !== '') {
         try {
           const gridDriver = this.homey.drivers.getDriver('grid-meter');
           const gridDevices = gridDriver.getDevices();
           const gridDevice = gridDevices.find((device) => device.getData().id === gridDeviceId);
-          if (gridDevice && gridDevice.hasCapability('meter_power')) {
-            gridMeterNow = gridDevice.getCapabilityValue('meter_power') || 0;
+          if (gridDevice) {
+            if (gridDevice.hasCapability('meter_power.imported')) {
+              gridImportedNow = gridDevice.getCapabilityValue('meter_power.imported') || 0;
+            } else if (gridDevice.hasCapability('meter_power')) {
+              // Legacy fallback (some meters expose just meter_power)
+              gridImportedNow = gridDevice.getCapabilityValue('meter_power') || 0;
+            }
+
+            if (gridDevice.hasCapability('meter_power.exported')) {
+              gridExportedNow = gridDevice.getCapabilityValue('meter_power.exported') || 0;
+            }
           }
         } catch (error) {
           // Ignore
@@ -1582,7 +1592,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         // Reset last meter reading to avoid double-counting
         this.lastMeterReading = {
           solar: solarMeterNow,
-          grid: gridMeterNow,
+          grid: gridImportedNow,
+          gridImported: gridImportedNow,
+          gridExported: gridExportedNow,
           battery: batteryMeterNow,
           batteryDischarged: batteryMeterDischargedNow,
           timestamp: now,
@@ -1595,7 +1607,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         this.log('📊 Initializing meter readings (first run or after restart)');
         this.lastMeterReading = {
           solar: solarMeterNow,
-          grid: gridMeterNow,
+          grid: gridImportedNow,
+          gridImported: gridImportedNow,
+          gridExported: gridExportedNow,
           battery: batteryMeterNow,
           batteryDischarged: batteryMeterDischargedNow,
           timestamp: now,
@@ -1606,7 +1620,11 @@ class EnergyOptimizerDevice extends RCTDevice {
       // Calculate delta since last reading
       // IMPORTANT: Use nullish coalescing (??) so that 0 is treated as a valid previous reading
       const lastReading = this.lastMeterReading;
-      const solarKWh = Math.max(0, solarMeterNow - (lastReading.solar ?? solarMeterNow));
+      const solarProducedKWh = Math.max(0, solarMeterNow - (lastReading.solar ?? solarMeterNow));
+      const lastGridExported = lastReading.gridExported ?? 0;
+      const gridExportedKWh = Math.max(0, gridExportedNow - (lastGridExported ?? gridExportedNow));
+      // Solar available for local use = produced - exported to grid
+      const solarAvailableKWh = Math.max(0, solarProducedKWh - gridExportedKWh);
       const batteryChargedKWh = Math.max(0, batteryMeterNow - (lastReading.battery ?? batteryMeterNow));
       const batteryDischargedKWh = Math.max(0, batteryMeterDischargedNow - (lastReading.batteryDischarged ?? batteryMeterDischargedNow));
 
@@ -1614,7 +1632,9 @@ class EnergyOptimizerDevice extends RCTDevice {
       // This prevents unrelated solar/grid deltas from being attributed to a later battery charge.
       this.lastMeterReading = {
         solar: solarMeterNow,
-        grid: gridMeterNow,
+        grid: gridImportedNow,
+        gridImported: gridImportedNow,
+        gridExported: gridExportedNow,
         battery: batteryMeterNow,
         batteryDischarged: batteryMeterDischargedNow,
         timestamp: now,
@@ -1629,7 +1649,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       if (batteryChargedKWh > 0.001) {
         const chargeEntry = createChargeEntry({
           chargedKWh: batteryChargedKWh,
-          solarKWh,
+          // Use export-adjusted solar: energy exported to grid cannot charge battery
+          solarKWh: solarAvailableKWh,
           gridPrice: currentPrice || 0,
           soc: currentSoc,
           timestamp: now,

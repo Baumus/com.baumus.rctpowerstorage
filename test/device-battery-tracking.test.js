@@ -118,6 +118,8 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     optimizer.lastMeterReading = {
       solar: 0,
       grid: 0,
+      gridImported: 0,
+      gridExported: 0,
       battery: 0,
       batteryDischarged: 0,
       timestamp: new Date('2024-01-15T11:45:00Z'),
@@ -131,8 +133,8 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
 
     const gridDevice = createFakeDevice({
       id: 'grid1',
-      capabilities: { 'meter_power': true },
-      values: { 'meter_power': 5.0 },
+      capabilities: { 'meter_power.imported': true, 'meter_power.exported': true },
+      values: { 'meter_power.imported': 5.0, 'meter_power.exported': 0.0 },
     });
 
     const batteryDevice = createFakeDevice({
@@ -259,6 +261,8 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     optimizer.lastMeterReading = {
       solar: 0,
       grid: 0,
+      gridImported: 0,
+      gridExported: 0,
       battery: 0,
       batteryDischarged: 0,
       timestamp: new Date('2024-01-15T11:45:00Z'),
@@ -327,6 +331,8 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     optimizer.lastMeterReading = {
       solar: 0,
       grid: 0,
+      gridImported: 0,
+      gridExported: 0,
       battery: 0,
       batteryDischarged: 0,
       timestamp: new Date('2024-01-15T11:45:00Z'),
@@ -368,5 +374,76 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     expect(optimizer.batteryChargeLog.length).toBe(0);
     expect(optimizer.lastMeterReading.solar).toBe(5.0);
     expect(optimizer.lastMeterReading.battery).toBe(0.0);
+  });
+
+  it('should subtract exported energy when attributing solar to battery', async () => {
+    const optimizer = new EnergyOptimizerDevice();
+
+    optimizer.getSetting = jest.fn((key) => {
+      if (key === 'solar_device_id') return 'sol1';
+      if (key === 'grid_device_id') return 'grid1';
+      if (key === 'battery_device_id') return 'bat1';
+      if (key === 'min_soc_threshold') return 7;
+      return '';
+    });
+
+    optimizer.priceCache = [{ startsAt: '2024-01-15T12:00:00Z', total: 0.20 }];
+    optimizer.batteryChargeLog = [];
+    optimizer.setStoreValue = jest.fn(async () => {});
+    optimizer.log = jest.fn();
+    optimizer.error = jest.fn();
+
+    optimizer.lastMeterReading = {
+      solar: 0,
+      grid: 0,
+      gridImported: 0,
+      gridExported: 0,
+      battery: 0,
+      batteryDischarged: 0,
+      timestamp: new Date('2024-01-15T11:45:00Z'),
+    };
+
+    const solarDevice = createFakeDevice({
+      id: 'sol1',
+      capabilities: { meter_power: true },
+      values: { meter_power: 5.0 }, // +5.0 kWh PV produced
+    });
+
+    const gridDevice = createFakeDevice({
+      id: 'grid1',
+      capabilities: { 'meter_power.imported': true, 'meter_power.exported': true },
+      values: { 'meter_power.imported': 0.0, 'meter_power.exported': 4.0 }, // +4.0 kWh exported
+    });
+
+    const batteryDevice = createFakeDevice({
+      id: 'bat1',
+      capabilities: {
+        'meter_power.charged': true,
+        'meter_power.discharged': true,
+        'measure_battery': true,
+      },
+      values: {
+        'meter_power.charged': 2.0, // +2.0 kWh charged
+        'meter_power.discharged': 0.0,
+        'measure_battery': 55,
+      },
+      settings: { battery_capacity: '10.0' },
+    });
+
+    const fakeDrivers = {
+      'solar-panel': { getDevices: () => [solarDevice] },
+      'grid-meter': { getDevices: () => [gridDevice] },
+      'rct-power-storage-dc': { getDevices: () => [batteryDevice] },
+    };
+
+    optimizer.homey = { drivers: { getDriver: (id) => fakeDrivers[id] } };
+
+    await optimizer.trackBatteryCharging(0);
+
+    expect(optimizer.batteryChargeLog.length).toBe(1);
+    expect(optimizer.batteryChargeLog[0].type).toBe('charge');
+    // solarAvailable = 5 - 4 = 1; charged = 2 => 1 solar + 1 grid
+    expect(optimizer.batteryChargeLog[0].solarKWh).toBeCloseTo(1.0, 3);
+    expect(optimizer.batteryChargeLog[0].gridKWh).toBeCloseTo(1.0, 3);
   });
 });
