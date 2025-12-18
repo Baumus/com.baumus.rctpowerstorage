@@ -130,5 +130,8 @@
   },
   "4.2.10": {
     "en": "fix: grid meter handling"
+  },
+  "4.2.11": {
+    "en": "fix: avg battery energy cost calc"
   }
 }
