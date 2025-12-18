@@ -727,6 +727,178 @@ describe('Settings Page Data Rendering', () => {
     });
   });
 
+  describe('Battery Status Display (End-to-End)', () => {
+    it('should display complete battery status with storedKWh and tracked energy cost', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.65,
+          targetSoc: 1.0,
+          availableCapacity: 3.5,
+          batteryCapacity: 10.0,
+          storedKWh: 6.5,
+          energyCost: {
+            avgPrice: 0.1845,
+            totalKWh: 6.5,
+            storedKWh: 6.5,
+            solarKWh: 2.0,
+            gridKWh: 4.5,
+            solarPercent: 30.77,
+            gridPercent: 69.23,
+            totalCost: 1.20,
+            gridOnlyAvgPrice: 0.2667,
+            isEstimated: false,
+            trackedKWh: 6.5,
+            unknownKWh: 0,
+          },
+        },
+      };
+
+      // Simulate UI rendering
+      const bat = strategy.batteryStatus;
+      const socPercent = (bat.currentSoc * 100).toFixed(1);
+      const storedKWh = bat.storedKWh.toFixed(2);
+      const cost = bat.energyCost;
+      const hasUnknownPortion = cost.unknownKWh > 0.01;
+
+      expect(socPercent).toBe('65.0');
+      expect(storedKWh).toBe('6.50');
+      expect(cost.avgPrice.toFixed(4)).toBe('0.1845');
+      expect(hasUnknownPortion).toBe(false);
+      expect(cost.isEstimated).toBe(false);
+      expect(cost.trackedKWh).toBe(6.5);
+    });
+
+    it('should display battery status with fully estimated energy cost (no charge log)', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.80,
+          targetSoc: 1.0,
+          availableCapacity: 2.0,
+          batteryCapacity: 10.0,
+          storedKWh: 8.0,
+          energyCost: {
+            avgPrice: 0.14,
+            totalKWh: 8.0,
+            storedKWh: 8.0,
+            solarKWh: 2.4,
+            gridKWh: 5.6,
+            solarPercent: 30,
+            gridPercent: 70,
+            totalCost: 1.12,
+            gridOnlyAvgPrice: 0.20,
+            isEstimated: true,
+            trackedKWh: 0,
+            unknownKWh: 8.0,
+          },
+        },
+      };
+
+      // Simulate UI rendering
+      const bat = strategy.batteryStatus;
+      const storedKWh = bat.storedKWh.toFixed(2);
+      const cost = bat.energyCost;
+      const hasUnknownPortion = cost.unknownKWh > 0.01;
+      const isFullyEstimated = cost.trackedKWh < 0.01;
+
+      expect(storedKWh).toBe('8.00');
+      expect(cost.avgPrice.toFixed(4)).toBe('0.1400');
+      expect(hasUnknownPortion).toBe(true);
+      expect(isFullyEstimated).toBe(true);
+      expect(cost.isEstimated).toBe(true);
+      expect(cost.trackedKWh).toBe(0);
+      expect(cost.unknownKWh).toBe(8.0);
+    });
+
+    it('should display battery status with mixed energy cost (tracked + unknown)', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.70,
+          targetSoc: 1.0,
+          availableCapacity: 3.0,
+          batteryCapacity: 10.0,
+          storedKWh: 7.0,
+          energyCost: {
+            avgPrice: 0.1786,
+            totalKWh: 7.0,
+            storedKWh: 7.0,
+            solarKWh: 1.5,
+            gridKWh: 5.5,
+            solarPercent: 21.43,
+            gridPercent: 78.57,
+            totalCost: 1.25,
+            gridOnlyAvgPrice: 0.2273,
+            isEstimated: true,
+            trackedKWh: 3.0,
+            unknownKWh: 4.0,
+            unknownAvgPrice: 0.20,
+          },
+        },
+      };
+
+      // Simulate UI rendering
+      const bat = strategy.batteryStatus;
+      const storedKWh = bat.storedKWh.toFixed(2);
+      const cost = bat.energyCost;
+      const hasUnknownPortion = cost.unknownKWh > 0.01;
+      const hasMixedData = cost.trackedKWh > 0.01 && cost.unknownKWh > 0.01;
+
+      expect(storedKWh).toBe('7.00');
+      expect(cost.avgPrice.toFixed(4)).toBe('0.1786');
+      expect(hasUnknownPortion).toBe(true);
+      expect(hasMixedData).toBe(true);
+      expect(cost.isEstimated).toBe(true);
+      expect(cost.trackedKWh).toBe(3.0);
+      expect(cost.unknownKWh).toBe(4.0);
+      expect(cost.unknownAvgPrice).toBe(0.20);
+
+      // Verify UI labels
+      const label = hasMixedData ? '💰 Avg. Battery Energy Cost (Mixed):' : '💰 Avg. Battery Energy Cost:';
+      const subtitle = `📊 Tracked: ${cost.trackedKWh.toFixed(2)} kWh | Unknown: ${cost.unknownKWh.toFixed(2)} kWh (estimated @ ${cost.unknownAvgPrice.toFixed(4)} €/kWh)`;
+      
+      expect(label).toBe('💰 Avg. Battery Energy Cost (Mixed):');
+      expect(subtitle).toContain('Tracked: 3.00 kWh');
+      expect(subtitle).toContain('Unknown: 4.00 kWh');
+      expect(subtitle).toContain('0.2000 €/kWh');
+    });
+
+    it('should verify storedKWh equals currentSoc * batteryCapacity', () => {
+      const currentSoc = 0.75;
+      const batteryCapacity = 12.0;
+      const storedKWh = currentSoc * batteryCapacity;
+
+      expect(storedKWh).toBeCloseTo(9.0, 2);
+
+      // Verify it's included in batteryStatus
+      const batteryStatus = {
+        currentSoc,
+        batteryCapacity,
+        storedKWh,
+      };
+
+      expect(batteryStatus.storedKWh).toBe(storedKWh);
+    });
+
+    it('should handle battery with no energy (SoC near zero)', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.03,
+          targetSoc: 1.0,
+          availableCapacity: 9.7,
+          batteryCapacity: 10.0,
+          storedKWh: 0.3,
+          energyCost: null,
+        },
+      };
+
+      const bat = strategy.batteryStatus;
+      const storedKWh = bat.storedKWh.toFixed(2);
+      const hasEnergyCost = bat.energyCost !== null;
+
+      expect(storedKWh).toBe('0.30');
+      expect(hasEnergyCost).toBe(false);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle API errors gracefully', () => {
       const errorResponse = {

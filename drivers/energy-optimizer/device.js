@@ -1819,6 +1819,96 @@ class EnergyOptimizerDevice extends RCTDevice {
   }
 
   /**
+   * Combine tracked and unknown battery energy costs
+   * This ensures we always account for the full battery content based on SoC
+   * 
+   * @param {Object|null} tracked - Tracked energy from charge log
+   * @param {number} totalKWh - Total energy in battery from SoC
+   * @param {number} batteryCapacity - Battery capacity in kWh
+   * @returns {Object|null} Combined energy cost with tracked + unknown portions
+   */
+  combineBatteryCost(tracked, totalKWh, batteryCapacity) {
+    if (totalKWh < 0.01) {
+      return null;
+    }
+
+    const trackedKWh = tracked?.totalKWh || 0;
+    const unknownKWh = Math.max(0, totalKWh - trackedKWh);
+
+    // If everything is tracked, return it directly
+    if (unknownKWh < 0.01) {
+      return {
+        ...tracked,
+        storedKWh: totalKWh,
+        trackedKWh,
+        unknownKWh: 0,
+        isEstimated: false,
+      };
+    }
+
+    // If nothing is tracked, estimate everything
+    if (trackedKWh < 0.01) {
+      const estimated = this.estimateBatteryEnergyCost(totalKWh / batteryCapacity, batteryCapacity);
+      if (!estimated) return null;
+      return {
+        ...estimated,
+        storedKWh: totalKWh,
+        trackedKWh: 0,
+        unknownKWh: totalKWh,
+        isEstimated: true,
+      };
+    }
+
+    // Mixed case: combine tracked + unknown
+    // Estimate the unknown portion
+    let unknownAvgPrice = 0.20; // Fallback
+
+    if (this.currentStrategy?.chargeIntervals && this.currentStrategy.chargeIntervals.length > 0) {
+      const sum = this.currentStrategy.chargeIntervals.reduce((acc, interval) => acc + (interval.total || 0), 0);
+      unknownAvgPrice = sum / this.currentStrategy.chargeIntervals.length;
+    } else if (this.priceCache && this.priceCache.length > 0) {
+      const recentPrices = this.priceCache.slice(0, Math.min(96, this.priceCache.length));
+      const sum = recentPrices.reduce((acc, p) => acc + (p.total || 0), 0);
+      unknownAvgPrice = sum / recentPrices.length;
+    }
+
+    // Assume unknown energy is mostly grid with some solar (conservative)
+    const unknownSolarPercent = 30;
+    const unknownGridPercent = 70;
+    const unknownSolarKWh = unknownKWh * (unknownSolarPercent / 100);
+    const unknownGridKWh = unknownKWh * (unknownGridPercent / 100);
+    const unknownTotalCost = unknownGridKWh * unknownAvgPrice;
+
+    // Combine tracked + unknown
+    const combinedTotalKWh = trackedKWh + unknownKWh;
+    const combinedSolarKWh = (tracked?.solarKWh || 0) + unknownSolarKWh;
+    const combinedGridKWh = (tracked?.gridKWh || 0) + unknownGridKWh;
+    const combinedTotalCost = (tracked?.totalCost || 0) + unknownTotalCost;
+    const combinedAvgPrice = combinedTotalCost / combinedTotalKWh;
+
+    this.log(`   📊 Combined battery cost (tracked + unknown):`);
+    this.log(`      Total: ${combinedTotalKWh.toFixed(2)} kWh @ ${combinedAvgPrice.toFixed(4)} €/kWh`);
+    this.log(`      Tracked: ${trackedKWh.toFixed(2)} kWh @ ${(tracked?.avgPrice || 0).toFixed(4)} €/kWh`);
+    this.log(`      Unknown: ${unknownKWh.toFixed(2)} kWh @ ${unknownAvgPrice.toFixed(4)} €/kWh (estimated)`);
+
+    return {
+      avgPrice: combinedAvgPrice,
+      totalKWh: combinedTotalKWh,
+      storedKWh: totalKWh,
+      solarKWh: combinedSolarKWh,
+      gridKWh: combinedGridKWh,
+      solarPercent: (combinedSolarKWh / combinedTotalKWh) * 100,
+      gridPercent: (combinedGridKWh / combinedTotalKWh) * 100,
+      totalCost: combinedTotalCost,
+      gridOnlyAvgPrice: combinedGridKWh > 0 ? combinedTotalCost / combinedGridKWh : unknownAvgPrice,
+      isEstimated: true, // Flag to indicate mixed/estimated data
+      trackedKWh,
+      unknownKWh,
+      unknownAvgPrice,
+    };
+  }
+
+  /**
    * Update battery status in current strategy with latest data
    * This ensures energyCost is always current even when strategy doesn't change
    */
@@ -1838,13 +1928,15 @@ class EnergyOptimizerDevice extends RCTDevice {
       const batteryCapacity = parseFloat(batteryDevice.getSetting('battery_capacity')) || DEFAULT_BATTERY_CAPACITY_KWH;
       const maxTargetSoc = this.normalizedTargetSoc;
       const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
+      const storedKWh = currentSoc * batteryCapacity;
 
-      // Recalculate battery energy cost (may have changed due to charging/discharging)
-      let batteryCostInfo = this.calculateBatteryEnergyCost();
+      // Get tracked energy from charge log
+      const trackedCost = this.calculateBatteryEnergyCost();
 
-      // If no cost data but battery has charge, estimate cost for unknown energy
-      if (!batteryCostInfo && currentSoc > 0.05) {
-        batteryCostInfo = this.estimateBatteryEnergyCost(currentSoc, batteryCapacity);
+      // Combine tracked + unknown to account for full battery content
+      let batteryCostInfo = null;
+      if (currentSoc > 0.05) {
+        batteryCostInfo = this.combineBatteryCost(trackedCost, storedKWh, batteryCapacity);
       }
 
       // Update batteryStatus in existing strategy
@@ -1853,6 +1945,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         targetSoc: maxTargetSoc,
         availableCapacity: maxBatteryKWh,
         batteryCapacity,
+        storedKWh,
         energyCost: batteryCostInfo,
       };
 

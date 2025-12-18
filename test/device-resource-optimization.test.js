@@ -415,4 +415,115 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(optimizer.batteryHistory[1]).toEqual([11, 12]);
     });
   });
+
+  describe('Combined battery cost (tracked + unknown)', () => {
+    it('should return tracked data only when unknownKWh is negligible', () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+
+      const tracked = {
+        avgPrice: 0.15,
+        totalKWh: 5.0,
+        solarKWh: 2.0,
+        gridKWh: 3.0,
+        solarPercent: 40,
+        gridPercent: 60,
+        totalCost: 0.75,
+        gridOnlyAvgPrice: 0.25,
+      };
+
+      const combined = optimizer.combineBatteryCost(tracked, 5.0, 10.0);
+
+      expect(combined.avgPrice).toBeCloseTo(0.15, 4);
+      expect(combined.storedKWh).toBeCloseTo(5.0, 2);
+      expect(combined.trackedKWh).toBeCloseTo(5.0, 2);
+      expect(combined.unknownKWh).toBeCloseTo(0, 2);
+      expect(combined.isEstimated).toBe(false);
+    });
+
+    it('should estimate all energy when no tracked data exists', () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.priceCache = [
+        { total: 0.20 },
+        { total: 0.22 },
+        { total: 0.18 },
+      ];
+
+      const combined = optimizer.combineBatteryCost(null, 8.0, 10.0);
+
+      expect(combined.storedKWh).toBeCloseTo(8.0, 2);
+      expect(combined.trackedKWh).toBe(0);
+      expect(combined.unknownKWh).toBeCloseTo(8.0, 2);
+      expect(combined.isEstimated).toBe(true);
+      expect(combined.avgPrice).toBeGreaterThan(0);
+    });
+
+    it('should combine tracked and unknown energy with weighted average', () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.priceCache = [
+        { total: 0.20 },
+        { total: 0.20 },
+      ];
+
+      const tracked = {
+        avgPrice: 0.15,
+        totalKWh: 3.0,
+        solarKWh: 1.0,
+        gridKWh: 2.0,
+        solarPercent: 33.33,
+        gridPercent: 66.67,
+        totalCost: 0.45,
+        gridOnlyAvgPrice: 0.225,
+      };
+
+      const combined = optimizer.combineBatteryCost(tracked, 7.0, 10.0);
+
+      expect(combined.storedKWh).toBeCloseTo(7.0, 2);
+      expect(combined.trackedKWh).toBeCloseTo(3.0, 2);
+      expect(combined.unknownKWh).toBeCloseTo(4.0, 2);
+      expect(combined.isEstimated).toBe(true);
+      
+      // Verify weighted average: (3*0.15 + 4*0.20*0.7) / 7 ≈ 0.144
+      // Unknown grid: 4*0.7 = 2.8 kWh @ 0.20 = 0.56; Tracked: 0.45; Total: 1.01 / 7 = 0.144
+      expect(combined.avgPrice).toBeCloseTo(0.144, 3);
+      expect(combined.unknownAvgPrice).toBeCloseTo(0.20, 2);
+    });
+
+    it('should return null when totalKWh is below threshold', () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+
+      const combined = optimizer.combineBatteryCost(null, 0.005, 10.0);
+
+      expect(combined).toBeNull();
+    });
+
+    it('should use planned charge intervals for unknown price estimate', () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.currentStrategy = {
+        chargeIntervals: [
+          { total: 0.12 },
+          { total: 0.14 },
+          { total: 0.16 },
+        ],
+      };
+
+      const tracked = {
+        avgPrice: 0.10,
+        totalKWh: 2.0,
+        solarKWh: 1.0,
+        gridKWh: 1.0,
+        totalCost: 0.20,
+      };
+
+      const combined = optimizer.combineBatteryCost(tracked, 6.0, 10.0);
+
+      // Unknown price should be avg of charge intervals: (0.12+0.14+0.16)/3 = 0.14
+      expect(combined.unknownAvgPrice).toBeCloseTo(0.14, 2);
+      expect(combined.unknownKWh).toBeCloseTo(4.0, 2);
+    });
+  });
 });
