@@ -1821,7 +1821,7 @@ class EnergyOptimizerDevice extends RCTDevice {
   /**
    * Combine tracked and unknown battery energy costs
    * This ensures we always account for the full battery content based on SoC
-   * 
+   *
    * @param {Object|null} tracked - Tracked energy from charge log
    * @param {number} totalKWh - Total energy in battery from SoC
    * @param {number} batteryCapacity - Battery capacity in kWh
@@ -1886,7 +1886,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     const combinedTotalCost = (tracked?.totalCost || 0) + unknownTotalCost;
     const combinedAvgPrice = combinedTotalCost / combinedTotalKWh;
 
-    this.log(`   📊 Combined battery cost (tracked + unknown):`);
+    this.log('   📊 Combined battery cost (tracked + unknown):');
     this.log(`      Total: ${combinedTotalKWh.toFixed(2)} kWh @ ${combinedAvgPrice.toFixed(4)} €/kWh`);
     this.log(`      Tracked: ${trackedKWh.toFixed(2)} kWh @ ${(tracked?.avgPrice || 0).toFixed(4)} €/kWh`);
     this.log(`      Unknown: ${unknownKWh.toFixed(2)} kWh @ ${unknownAvgPrice.toFixed(4)} €/kWh (estimated)`);
