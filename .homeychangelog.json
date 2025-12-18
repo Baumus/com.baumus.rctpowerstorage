@@ -133,5 +133,8 @@
   },
   "4.2.11": {
     "en": "fix: avg battery energy cost calc"
+  },
+  "4.3.0": {
+    "en": "feat: improved battery optimization"
   }
 }
