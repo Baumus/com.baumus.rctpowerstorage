@@ -123,6 +123,9 @@ function computeHeuristicStrategy(indexedData, params, history, options = {}) {
     efficiencyLoss,
     expensivePriceFactor,
     minProfitEurPerKWh,
+    // Optional economics/constraints
+    batteryCostEurPerKWh,
+    minEnergyKWh,
   } = params;
 
   const logger = options.logger || {
@@ -134,6 +137,15 @@ function computeHeuristicStrategy(indexedData, params, history, options = {}) {
   const energyPerInterval = chargePowerKW * intervalHours;
   const maxBatteryKWh = batteryCapacity * (targetSoc - currentSoc);
   const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
+
+  const etaDischarge = 1 - efficiencyLoss;
+  const safeEtaDischarge = etaDischarge > 0 ? etaDischarge : 1;
+
+  const hasBatteryCostBasis = Number.isFinite(batteryCostEurPerKWh) && batteryCostEurPerKWh > 0;
+  const effectiveMinProfitEurPerKWh = Number.isFinite(minProfitEurPerKWh) ? Math.max(0, minProfitEurPerKWh) : 0;
+  const effectiveBatteryCostPerDeliveredKWh = hasBatteryCostBasis
+    ? (batteryCostEurPerKWh / safeEtaDischarge) + effectiveMinProfitEurPerKWh
+    : null;
 
   // Compute dynamic price thresholds
   const sortedPrices = indexedData.map((p) => p.total).sort((a, b) => a - b);
@@ -177,9 +189,19 @@ function computeHeuristicStrategy(indexedData, params, history, options = {}) {
   // Check battery capacity
   const canChargeBattery = maxBatteryKWh > 0.01;
   const currentBatteryKWh = currentSoc * batteryCapacity;
-  let remainingBatteryEnergy = currentBatteryKWh;
+  const configuredMinEnergyKWh = Number.isFinite(minEnergyKWh) ? Math.max(0, minEnergyKWh) : 0;
+  const effectiveMinEnergyKWh = Math.min(
+    Math.min(configuredMinEnergyKWh, targetSoc * batteryCapacity),
+    currentBatteryKWh,
+  );
+
+  // remainingBatteryEnergyStoredKWh is energy *stored* above the min SoC threshold.
+  let remainingBatteryEnergyStoredKWh = Math.max(0, currentBatteryKWh - effectiveMinEnergyKWh);
 
   logger.log(`Battery status: ${(currentSoc * 100).toFixed(1)}% = ${currentBatteryKWh.toFixed(2)} kWh available now`);
+  if (effectiveMinEnergyKWh > 0) {
+    logger.log(`   Min SoC reserve: ${effectiveMinEnergyKWh.toFixed(2)} kWh (usable now: ${(remainingBatteryEnergyStoredKWh * safeEtaDischarge).toFixed(2)} kWh delivered)`);
+  }
   if (canChargeBattery) {
     logger.log(`   Can charge additional ${maxBatteryKWh.toFixed(2)} kWh (up to ${(targetSoc * 100).toFixed(1)}%)`);
   } else {
@@ -195,10 +217,26 @@ function computeHeuristicStrategy(indexedData, params, history, options = {}) {
     let assignedEnergy = 0;
 
     // First, use existing battery charge
-    if (remainingBatteryEnergy > 0.01) {
-      const useFromBattery = Math.min(demandKWh, remainingBatteryEnergy);
-      remainingBatteryEnergy -= useFromBattery;
-      assignedEnergy += useFromBattery;
+    if (remainingBatteryEnergyStoredKWh > 0.01) {
+      // Only discharge existing energy if profitable vs cost basis (when available)
+      const canUseExistingEnergy = effectiveBatteryCostPerDeliveredKWh === null
+        ? true
+        : (expInterval.total - effectiveBatteryCostPerDeliveredKWh) > 0;
+
+      if (canUseExistingEnergy) {
+        const maxDeliverableFromStored = remainingBatteryEnergyStoredKWh * safeEtaDischarge;
+        const useFromBatteryDelivered = Math.min(demandKWh, maxDeliverableFromStored);
+        const storedUsed = useFromBatteryDelivered / safeEtaDischarge;
+        remainingBatteryEnergyStoredKWh -= storedUsed;
+        assignedEnergy += useFromBatteryDelivered;
+
+        // Savings from using existing energy (vs buying from grid now)
+        // Only apply when we have a cost basis; otherwise keep legacy semantics
+        // where savings only reflect charge/discharge arbitrage decisions.
+        if (effectiveBatteryCostPerDeliveredKWh !== null) {
+          totalSavings += (expInterval.total - effectiveBatteryCostPerDeliveredKWh) * useFromBatteryDelivered;
+        }
+      }
 
       if (assignedEnergy >= demandKWh - 0.01) {
         assignedDischarges.add(expInterval.index);
@@ -311,6 +349,10 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     chargePowerKW,
     intervalHours = 0.25,
     efficiencyLoss,
+    // Optional economics/constraints
+    batteryCostEurPerKWh,
+    minProfitEurPerKWh,
+    minEnergyKWh,
   } = params;
 
   // Validate inputs
@@ -351,10 +393,34 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
   const etaCharge = 1 - efficiencyLoss;
   const etaDischarge = 1 - efficiencyLoss;
 
+  const safeEtaDischarge = etaDischarge > 0 ? etaDischarge : 1;
+
+  // Battery cost basis: avg purchase price of energy currently stored in the battery.
+  // discharge_t is modeled as kWh delivered to household demand (i.e. reduces grid import).
+  // Delivering 1 kWh consumes (1/etaDischarge) kWh stored, so the effective cost basis per delivered kWh is:
+  //   batteryCostEurPerKWh / etaDischarge
+  const hasBatteryCostBasis = Number.isFinite(batteryCostEurPerKWh) && batteryCostEurPerKWh > 0;
+  const effectiveMinProfitEurPerKWh = Number.isFinite(minProfitEurPerKWh) ? Math.max(0, minProfitEurPerKWh) : 0;
+  const effectiveBatteryCostPerDeliveredKWh = hasBatteryCostBasis
+    ? (batteryCostEurPerKWh / safeEtaDischarge) + effectiveMinProfitEurPerKWh
+    : null;
+
+  const configuredMinEnergyKWh = Number.isFinite(minEnergyKWh) ? Math.max(0, minEnergyKWh) : 0;
+  const effectiveMinEnergyKWh = Math.min(
+    Math.min(configuredMinEnergyKWh, maxEnergyKWh),
+    currentEnergyKWh,
+  );
+
   if (logger) {
     logger.log('\n=== LP OPTIMIZATION ===');
     logger.log(`Intervals: ${num}, Battery: ${currentEnergyKWh.toFixed(2)} kWh / ${maxEnergyKWh.toFixed(2)} kWh`);
     logger.log(`Charge/Discharge power: ${chargePowerKW} kW per interval`);
+    if (effectiveMinEnergyKWh > 0) {
+      logger.log(`Min energy constraint: ${effectiveMinEnergyKWh.toFixed(2)} kWh`);
+    }
+    if (effectiveBatteryCostPerDeliveredKWh !== null) {
+      logger.log(`Battery cost basis (delivered): €${effectiveBatteryCostPerDeliveredKWh.toFixed(4)}/kWh`);
+    }
   }
 
   // 2) Build LP model
@@ -390,7 +456,13 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
       totalCost: price,
     };
     variables[dVar] = {
-      totalCost: -price,
+      // Baseline grid cost is constant (demand*price); we minimize variable cost from battery actions.
+      // Without cost basis: discharge reduces grid import => coefficient = -price.
+      // With cost basis: discharge also has an internal cost (battery energy purchase price + profit margin).
+      // Net coefficient = (batteryCostBasisPerDeliveredKWh - price).
+      totalCost: effectiveBatteryCostPerDeliveredKWh !== null
+        ? (effectiveBatteryCostPerDeliveredKWh - price)
+        : -price,
     };
     variables[sVar] = {
       totalCost: 0,
@@ -410,6 +482,13 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     const sCapName = `sCap_${t}`;
     constraints[sCapName] = { max: maxEnergyKWh };
     constraints[sCapName][sVar] = 1;
+
+    // SoC lower bound (min SoC threshold): soc_t >= effectiveMinEnergyKWh
+    if (effectiveMinEnergyKWh > 0) {
+      const sMinName = `sMin_${t}`;
+      constraints[sMinName] = { min: effectiveMinEnergyKWh };
+      constraints[sMinName][sVar] = 1;
+    }
 
     // No net feed-in: grid_t = demand + charge - discharge >= 0
     // => charge_t - discharge_t >= -demand

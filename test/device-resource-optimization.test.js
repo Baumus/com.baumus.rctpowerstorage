@@ -199,6 +199,158 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       await optimizer.calculateOptimalStrategy({ force: true });
       expect(optimizer.debug).not.toHaveBeenCalledWith('⏭️ Skipping strategy recalc (no input changes)');
     });
+
+    it('should pass combined battery cost basis + min SoC to LP and expose same values in strategy batteryStatus', async () => {
+      jest.resetModules();
+      jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });
+
+      const optimizerCore = require('../drivers/energy-optimizer/optimizer-core');
+      const lpSpy = jest.spyOn(optimizerCore, 'optimizeStrategyWithLp').mockReturnValue({
+        chargeIntervals: [],
+        dischargeIntervals: [],
+        totalChargeKWh: 0,
+        totalDischargeKWh: 0,
+        savings: 0,
+      });
+
+      const EnergyOptimizerDeviceFresh = require('../drivers/energy-optimizer/device');
+      const optimizer = new EnergyOptimizerDeviceFresh();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 50), // 50% SoC
+        getSetting: jest.fn(() => 10), // 10 kWh battery
+      };
+
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getCapabilitySafe = jest.fn(() => 50);
+
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        if (key === 'min_soc_threshold') return 20; // => 2.0 kWh minimum
+        if (key === 'min_profit_cent_per_kwh') return 8; // 0.08 €/kWh
+        return def;
+      });
+
+      optimizer.getSetting = jest.fn(() => undefined);
+      optimizer.getSettings = jest.fn(() => ({
+        battery_capacity: 10,
+      }));
+
+      optimizer.normalizedChargePowerKW = 5;
+      optimizer.normalizedTargetSoc = 1;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.2;
+      optimizer.productionHistory = {};
+      optimizer.gridHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      // Force a deterministic tracked cost basis (so combineBatteryCost returns tracked only)
+      optimizer.calculateBatteryEnergyCost = jest.fn(() => ({
+        avgPrice: 0.123,
+        totalKWh: 5.0,
+        solarKWh: 0,
+        gridKWh: 5.0,
+        solarPercent: 0,
+        gridPercent: 100,
+        totalCost: 0.615,
+        gridOnlyAvgPrice: 0.123,
+      }));
+
+      await optimizer.calculateOptimalStrategy({ force: true });
+
+      expect(lpSpy).toHaveBeenCalled();
+      const passedParams = lpSpy.mock.calls[0][1];
+      expect(passedParams.batteryCostEurPerKWh).toBeCloseTo(0.123, 6);
+      expect(passedParams.minProfitEurPerKWh).toBeCloseTo(0.08, 6);
+      expect(passedParams.minEnergyKWh).toBeCloseTo(2.0, 6);
+
+      expect(optimizer.currentStrategy.batteryStatus.storedKWh).toBeCloseTo(5.0, 6);
+      expect(optimizer.currentStrategy.batteryStatus.energyCost.avgPrice).toBeCloseTo(0.123, 6);
+
+      lpSpy.mockRestore();
+    });
+
+    it('should pass combined battery cost basis + min SoC to heuristic optimizer when LP is skipped', async () => {
+      jest.resetModules();
+      jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });
+
+      const optimizerCore = require('../drivers/energy-optimizer/optimizer-core');
+      const lpSpy = jest.spyOn(optimizerCore, 'optimizeStrategyWithLp').mockReturnValue(null);
+      const heuristicSpy = jest.spyOn(optimizerCore, 'computeHeuristicStrategy').mockReturnValue({
+        chargeIntervals: [],
+        dischargeIntervals: [],
+        expensiveIntervals: [],
+        avgPrice: 0.25,
+        neededKWh: 0,
+        forecastedDemand: 0,
+        savings: 0,
+        expensiveThreshold: 0,
+      });
+
+      const EnergyOptimizerDeviceFresh = require('../drivers/energy-optimizer/device');
+      const optimizer = new EnergyOptimizerDeviceFresh();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 50),
+        getSetting: jest.fn(() => 10),
+      };
+
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getCapabilitySafe = jest.fn(() => 50);
+
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        if (key === 'min_soc_threshold') return 20;
+        if (key === 'min_profit_cent_per_kwh') return 8;
+        return def;
+      });
+
+      optimizer.getSetting = jest.fn(() => undefined);
+      optimizer.getSettings = jest.fn(() => ({ battery_capacity: 10 }));
+
+      optimizer.normalizedChargePowerKW = 5;
+      optimizer.normalizedTargetSoc = 1;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.2;
+      optimizer.productionHistory = {};
+      optimizer.gridHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      optimizer.calculateBatteryEnergyCost = jest.fn(() => ({
+        avgPrice: 0.123,
+        totalKWh: 5.0,
+        solarKWh: 0,
+        gridKWh: 5.0,
+        solarPercent: 0,
+        gridPercent: 100,
+        totalCost: 0.615,
+        gridOnlyAvgPrice: 0.123,
+      }));
+
+      await optimizer.calculateOptimalStrategy({ force: true });
+
+      expect(lpSpy).toHaveBeenCalled();
+      expect(heuristicSpy).toHaveBeenCalled();
+      const passedParams = heuristicSpy.mock.calls[0][1];
+      expect(passedParams.batteryCostEurPerKWh).toBeCloseTo(0.123, 6);
+      expect(passedParams.minEnergyKWh).toBeCloseTo(2.0, 6);
+      expect(passedParams.minProfitEurPerKWh).toBeCloseTo(0.08, 6);
+
+      lpSpy.mockRestore();
+      heuristicSpy.mockRestore();
+    });
   });
 
   describe('Device/driver cache', () => {

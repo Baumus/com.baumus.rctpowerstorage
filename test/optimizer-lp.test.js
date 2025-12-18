@@ -324,6 +324,63 @@ describe('LP Optimizer Logic', () => {
         call[0].includes('LP OPTIMIZATION'),
       )).toBe(true);
     });
+
+    test('includes battery cost basis in discharge objective coefficient', () => {
+      mockLpSolver.Solve.mockReturnValue({ totalCost: 0, feasible: true });
+
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T00:00:00Z', total: 0.20, intervalOfDay: 0 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.5,
+        targetSoc: 1.0,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        batteryCostEurPerKWh: 0.25,
+        minProfitEurPerKWh: 0.03,
+      };
+
+      optimizeStrategyWithLp(indexedData, params, mockHistory, { lpSolver: mockLpSolver });
+
+      const model = mockLpSolver.Solve.mock.calls[0][0];
+      // effective cost per delivered kWh = batteryCost/etaDischarge + minProfit
+      // etaDischarge = 0.9 => 0.25/0.9 + 0.03 = 0.307777...
+      // coefficient = effectiveCost - price
+      expect(model.variables.d_0.totalCost).toBeCloseTo((0.25 / 0.9 + 0.03) - 0.20, 6);
+    });
+
+    test('adds min SoC constraint (sMin_*) when minEnergyKWh is provided', () => {
+      mockLpSolver.Solve.mockReturnValue({ totalCost: 0, feasible: true });
+
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T00:00:00Z', total: 0.20, intervalOfDay: 0 },
+        { index: 1, startsAt: '2025-01-01T00:15:00Z', total: 0.25, intervalOfDay: 1 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.5,
+        targetSoc: 1.0,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        minEnergyKWh: 2.0,
+      };
+
+      optimizeStrategyWithLp(indexedData, params, mockHistory, { lpSolver: mockLpSolver });
+
+      const model = mockLpSolver.Solve.mock.calls[0][0];
+      expect(model.constraints.sMin_0).toBeDefined();
+      expect(model.constraints.sMin_0.min).toBeCloseTo(2.0, 6);
+      expect(model.constraints.sMin_0.s_0).toBe(1);
+
+      expect(model.constraints.sMin_1).toBeDefined();
+      expect(model.constraints.sMin_1.min).toBeCloseTo(2.0, 6);
+      expect(model.constraints.sMin_1.s_1).toBe(1);
+    });
   });
 
   describe('Error handling edge cases', () => {

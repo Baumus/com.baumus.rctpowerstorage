@@ -293,6 +293,75 @@ describe('Energy Optimizer Core Logic', () => {
       const maxCapacity = params.batteryCapacity * (params.targetSoc - params.currentSoc);
       expect(strategy.neededKWh).toBeLessThanOrEqual(maxCapacity + 0.01);
     });
+
+    test('does not discharge existing battery energy when price is below cost basis (incl. minProfit, efficiency adjusted)', () => {
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T00:00:00Z', total: 0.10, intervalOfDay: 0 },
+        { index: 1, startsAt: '2025-01-01T07:00:00Z', total: 0.20, intervalOfDay: 28 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.8, // plenty of energy available
+        targetSoc: 0.8,  // no charging plan, only existing energy could be used
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        expensivePriceFactor: 1.0,
+        minProfitEurPerKWh: 0.0,
+        // Very expensive stored energy => should not be used
+        batteryCostEurPerKWh: 0.30,
+      };
+
+      const history = {
+        productionHistory: {},
+        consumptionHistory: {
+          28: [4000, 4000, 4000], // demand exists
+        },
+        batteryHistory: {},
+      };
+
+      const strategy = computeHeuristicStrategy(indexedData, params, history);
+
+      expect(strategy.dischargeIntervals.length).toBe(0);
+    });
+
+    test('respects minEnergyKWh (min SoC reserve) when using existing battery energy', () => {
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T00:00:00Z', total: 0.10, intervalOfDay: 0 },
+        { index: 1, startsAt: '2025-01-01T07:00:00Z', total: 0.30, intervalOfDay: 28 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.5, // 5.0 kWh stored
+        targetSoc: 0.5,  // cannot charge more
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        expensivePriceFactor: 1.0,
+        minProfitEurPerKWh: 0.0,
+        batteryCostEurPerKWh: 0.05, // profitable to use
+        minEnergyKWh: 4.0, // keep 4 kWh stored => only 1 kWh stored usable
+      };
+
+      const history = {
+        productionHistory: {},
+        consumptionHistory: {
+          // demand = 3.2kW * 0.25h = 0.8kWh
+          28: [3200, 3200, 3200],
+        },
+        batteryHistory: {},
+      };
+
+      const strategy = computeHeuristicStrategy(indexedData, params, history);
+
+      // Usable delivered energy above reserve = (5-4)*etaDischarge = 1*0.9 = 0.9kWh
+      // Demand is 0.8kWh, so discharging should still be allowed
+      expect(strategy.dischargeIntervals.length).toBeGreaterThan(0);
+      expect(strategy.dischargeIntervals[0].index).toBe(1);
+      expect(strategy.dischargeIntervals[0].demandKWh).toBeCloseTo(0.8, 1);
+    });
   });
 
   describe('Realistic scenario: Winter day with morning peak', () => {

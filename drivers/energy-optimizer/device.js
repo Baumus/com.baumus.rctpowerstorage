@@ -829,6 +829,29 @@ class EnergyOptimizerDevice extends RCTDevice {
     const BATTERY_EFFICIENCY_LOSS = this.normalizedEfficiencyLoss;
     const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
 
+    // Economic inputs / constraints (no new settings):
+    // - min_soc_threshold is the lower SoC bound
+    // - min_profit_cent_per_kwh is the minimum profit margin
+    // - battery energy cost basis is derived from the same combined energyCost shown in the UI
+    const minSocThresholdPercent = Number(this.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD));
+    const minSocThreshold = Math.max(0, Math.min(100, minSocThresholdPercent)) / 100;
+    const configuredMinEnergyKWh = batteryCapacity * minSocThreshold;
+    const currentEnergyKWh = currentSoc * batteryCapacity;
+    const maxEnergyKWh = maxTargetSoc * batteryCapacity;
+    const minEnergyKWh = Math.min(
+      Math.min(configuredMinEnergyKWh, maxEnergyKWh),
+      currentEnergyKWh,
+    );
+
+    const storedKWh = currentEnergyKWh;
+    const trackedCost = this.calculateBatteryEnergyCost();
+    const batteryCostInfo = currentSoc > 0.05
+      ? this.combineBatteryCost(trackedCost, storedKWh, batteryCapacity)
+      : null;
+
+    const minProfitCent = Number(this.getSettingOrDefault('min_profit_cent_per_kwh', DEFAULT_MIN_PROFIT_CENT_PER_KWH));
+    const minProfitEurPerKWh = Number.isFinite(minProfitCent) ? Math.max(0, minProfitCent) / 100 : 0;
+
     this.log('\n=== BATTERY STATUS ===');
     this.log(`Current SoC: ${(currentSoc * 100).toFixed(1)}%, Max target: ${(maxTargetSoc * 100).toFixed(1)}%`);
     this.log(`Available capacity: ${maxBatteryKWh.toFixed(2)} kWh (can charge from ${(currentSoc * 100).toFixed(1)}% to ${(maxTargetSoc * 100).toFixed(1)}%)`);
@@ -851,6 +874,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         chargePowerKW,
         intervalHours: INTERVAL_HOURS,
         efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
+        minEnergyKWh,
+        batteryCostEurPerKWh: batteryCostInfo?.avgPrice,
+        minProfitEurPerKWh,
       },
       {
         productionHistory: this.productionHistory || {},
@@ -872,9 +898,6 @@ class EnergyOptimizerDevice extends RCTDevice {
         savings,
       } = lpResult;
 
-      // Calculate average cost of energy currently in battery
-      const batteryCostInfo = this.calculateBatteryEnergyCost();
-
       this.currentStrategy = {
         chargeIntervals,
         dischargeIntervals,
@@ -887,6 +910,7 @@ class EnergyOptimizerDevice extends RCTDevice {
           targetSoc: maxTargetSoc,
           availableCapacity: maxBatteryKWh,
           batteryCapacity,
+          storedKWh,
           energyCost: batteryCostInfo,
         },
       };
@@ -935,7 +959,9 @@ class EnergyOptimizerDevice extends RCTDevice {
       intervalHours: INTERVAL_HOURS,
       efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
       expensivePriceFactor: this.normalizedExpensivePriceFactor,
-      minProfitEurPerKWh: (this.getSetting('min_profit_cent_per_kwh') || 8) / 100,
+      minProfitEurPerKWh,
+      minEnergyKWh,
+      batteryCostEurPerKWh: batteryCostInfo?.avgPrice,
     };
 
     // Build history object for forecasting
@@ -978,9 +1004,6 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.log('===========================\n');
     }
 
-    // Calculate average cost of energy currently in battery
-    const batteryCostInfo = this.calculateBatteryEnergyCost();
-
     this.currentStrategy = {
       chargeIntervals: selectedChargeIntervals,
       dischargeIntervals: selectedDischargeIntervals,
@@ -993,6 +1016,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         targetSoc: maxTargetSoc,
         availableCapacity: maxBatteryKWh,
         batteryCapacity,
+        storedKWh,
         energyCost: batteryCostInfo,
       },
     };
