@@ -154,8 +154,71 @@ describe('strategy-execution-core', () => {
 
         expect(result.mode).toBe(BATTERY_MODE.CHARGE);
         expect(result.intervalIndex).toBe(4);
-        expect(result.reason).toContain('Planned charge interval');
+        expect(result.reason).toContain('Planned grid charge interval');
         expect(result.reason).toContain('0.24'); // Price check
+      });
+
+      it('should decide NORMAL_SOLAR for a solar-only planned charge interval when exporting', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedSolarEnergyKWh: 1.2, plannedGridEnergyKWh: 0 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: -500,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.intervalIndex).toBe(4);
+        expect(result.reason).toContain('Planned solar charge');
+        expect(result.reason).toContain('solar excess');
+      });
+
+      it('should decide NORMAL_HOLD for a solar-only planned charge interval when consuming', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedSolarEnergyKWh: 1.2 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: 500,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
+        expect(result.intervalIndex).toBe(4);
+        expect(result.reason).toContain('Planned solar charge');
+        expect(result.reason).toContain('Grid consumption');
+      });
+
+      it('should use CHARGE when a charge interval includes planned grid energy', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedSolarEnergyKWh: 0.5, plannedGridEnergyKWh: 0.5 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: -2000,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.CHARGE);
+        expect(result.reason).toContain('Planned grid charge interval');
       });
 
       it('should prioritize charge over discharge', () => {

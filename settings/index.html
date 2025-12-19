@@ -832,19 +832,17 @@
                     `;
                 }
                 
-                // Show planned charge price if available
-                if (strategy.chargeIntervals && strategy.chargeIntervals.length > 0) {
-                    // Show planned charge price if no historical data yet
-                    const avgPlannedPrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
+                // Planned charge price is computed in backend (UI only renders)
+                if (strategy.plannedCharging && typeof strategy.plannedCharging.avgPriceEurPerKWh === 'number' && Number.isFinite(strategy.plannedCharging.avgPriceEurPerKWh)) {
                     html += `
                         <div class="status-item" style="margin-bottom: 16px;">
                             <div style="width: 100%;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span class="status-label">💰 Planned Charge Price:</span>
-                                    <span class="status-value">${avgPlannedPrice.toFixed(4)} €/kWh</span>
+                                    <span class="status-value">${strategy.plannedCharging.avgPriceEurPerKWh.toFixed(4)} €/kWh</span>
                                 </div>
                                 <div style="font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    Based on ${strategy.chargeIntervals.length} planned charging intervals
+                                    Based on planned ⚡ grid + ☀️ solar charging
                                 </div>
                             </div>
                         </div>
@@ -855,10 +853,14 @@
                 `;
             }
             
-            // Charge intervals
-            if (strategy.chargeIntervals && strategy.chargeIntervals.length > 0) {
+            // Planned charging timeline (UI renders backend-provided entries)
+            const chargeEntries = Array.isArray(strategy.chargeDisplayEntries)
+                ? strategy.chargeDisplayEntries
+                : [];
+
+            if (chargeEntries.length > 0 || (strategy.chargeIntervals && strategy.chargeIntervals.length > 0)) {
                 // Debug: Show first charge interval info
-                const firstInterval = strategy.chargeIntervals[0];
+                const firstInterval = (chargeEntries[0] || strategy.chargeIntervals[0]);
                 const firstTime = new Date(firstInterval.startsAt);
                 const firstTimeStr = firstTime.toLocaleString('de-DE', {
                     year: 'numeric',
@@ -877,42 +879,47 @@
                 
                 html += '<div class="section-title">🔋 Planned Charging</div>';
                 html += '<div class="timeline">';
-                
-                const displayIntervals = strategy.chargeIntervals.slice(0, 12);
-                const energyPerInterval = 1.5; // 6kW * 0.25h = 1.5 kWh per interval
-                
-                displayIntervals.forEach(interval => {
-                    const time = new Date(interval.startsAt);
+
+                const displayEntries = (chargeEntries.length > 0 ? chargeEntries : strategy.chargeIntervals).slice(0, 12);
+
+                displayEntries.forEach(entry => {
+                    const time = new Date(entry.startsAt);
                     const timeStr = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                     const dateStr = time.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
-                    const price = interval.total.toFixed(4);
-                    
+
+                    const symbol = entry.plannedSymbol || '⚡';
+                    const plannedKWh = (typeof entry.plannedEnergyKWh === 'number' && Number.isFinite(entry.plannedEnergyKWh))
+                        ? entry.plannedEnergyKWh
+                        : null;
+
+                    const priceEurPerKWh = (typeof entry.plannedPriceEurPerKWh === 'number' && Number.isFinite(entry.plannedPriceEurPerKWh))
+                        ? entry.plannedPriceEurPerKWh
+                        : null;
+
+                    const priceText = priceEurPerKWh !== null ? `${priceEurPerKWh.toFixed(4)} €/kWh` : '-';
+
                     html += `
                         <div class="timeline-item cheap">
                             <span class="timeline-time">${dateStr} ${timeStr}</span>
-                            <span class="timeline-price">${price} €/kWh</span>
-                            <span class="timeline-action">⚡ Charge +${energyPerInterval.toFixed(1)} kWh</span>
+                            <span class="timeline-price">${priceText}</span>
+                            <span class="timeline-action">${symbol} Charge${plannedKWh !== null ? ` +${plannedKWh.toFixed(2)} kWh` : ''}</span>
                         </div>
                     `;
                 });
-                
-                if (strategy.chargeIntervals.length > 12) {
-                    const remainingIntervals = strategy.chargeIntervals.length - 12;
-                    const remainingEnergy = remainingIntervals * energyPerInterval;
-                    html += `<div class="no-data">... and ${remainingIntervals} more intervals (+${remainingEnergy.toFixed(1)} kWh)</div>`;
+
+                const totalEntryCount = (chargeEntries.length > 0 ? chargeEntries.length : strategy.chargeIntervals.length);
+                if (totalEntryCount > 12) {
+                    html += `<div class="no-data">... and ${totalEntryCount - 12} more entries</div>`;
                 }
-                
-                // Add total charging summary
-                const totalChargeEnergy = strategy.chargeIntervals.length * energyPerInterval;
-                const avgChargePrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
-                const totalChargeCost = totalChargeEnergy * avgChargePrice;
-                
-                html += `
-                    <div class="status-item" style="margin-top: 12px;">
-                        <span class="status-label">Total Charging:</span>
-                        <span class="status-value">${totalChargeEnergy.toFixed(1)} kWh @ avg ${avgChargePrice.toFixed(4)} €/kWh = €${totalChargeCost.toFixed(2)}</span>
-                    </div>
-                `;
+
+                if (strategy.plannedCharging && typeof strategy.plannedCharging.totalEnergyKWh === 'number' && Number.isFinite(strategy.plannedCharging.totalEnergyKWh) && strategy.plannedCharging.totalEnergyKWh > 0) {
+                    html += `
+                        <div class="status-item" style="margin-top: 12px;">
+                            <span class="status-label">Total Charging:</span>
+                            <span class="status-value">${strategy.plannedCharging.totalEnergyKWh.toFixed(2)} kWh @ avg ${strategy.plannedCharging.avgPriceEurPerKWh.toFixed(4)} €/kWh = €${strategy.plannedCharging.totalCostEur.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
                 
                 html += '</div>';
             } else {

@@ -1,6 +1,6 @@
 'use strict';
 
-const SOLAR_FEED_IN_TARIFF_EUR_PER_KWH = 0.07;
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('./constants');
 
 /**
  * Core optimization logic - pure functions without Homey dependencies
@@ -120,309 +120,6 @@ function forecastHouseSignalsPerInterval(intervals, history, intervalHours = 0.2
 }
 
 /**
- * Compute heuristic optimization strategy
- * @param {Array} indexedData - Price intervals with index and intervalOfDay
- * @param {Object} params - Battery and optimization parameters
- * @param {Object} history - Historical consumption/production data
- * @param {Object} options - Optional settings (logger, debug)
- * @returns {Object} Strategy with chargeIntervals, dischargeIntervals, etc.
- */
-function computeHeuristicStrategy(indexedData, params, history, options = {}) {
-  const {
-    batteryCapacity,
-    currentSoc,
-    targetSoc,
-    chargePowerKW,
-    intervalHours = 0.25,
-    efficiencyLoss,
-    expensivePriceFactor,
-    minProfitEurPerKWh,
-    // Optional economics/constraints
-    batteryCostEurPerKWh,
-    minEnergyKWh,
-  } = params;
-
-  const logger = options.logger || {
-    log: () => {},
-    debug: () => {},
-  };
-
-  // Calculate basic parameters
-  const energyPerInterval = chargePowerKW * intervalHours;
-  const maxBatteryKWh = batteryCapacity * (targetSoc - currentSoc);
-  const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
-
-  const etaDischarge = 1 - efficiencyLoss;
-  const safeEtaDischarge = etaDischarge > 0 ? etaDischarge : 1;
-
-  const hasBatteryCostBasis = Number.isFinite(batteryCostEurPerKWh) && batteryCostEurPerKWh > 0;
-  const effectiveMinProfitEurPerKWh = Number.isFinite(minProfitEurPerKWh) ? Math.max(0, minProfitEurPerKWh) : 0;
-
-  // Compute dynamic price thresholds
-  const sortedPrices = indexedData.map((p) => p.total).sort((a, b) => a - b);
-  const p70 = getPercentile(sortedPrices, 0.7);
-  const expensiveThreshold = Math.max(avgPrice * expensivePriceFactor, p70);
-
-  logger.debug(`Dynamic expensive threshold: ${expensiveThreshold.toFixed(4)} €/kWh (avgFactor=${expensivePriceFactor}, p70=${p70.toFixed(4)})`);
-
-  const {
-    importDemandKWh: importDemandKWhPerInterval,
-    solarSurplusKWh: solarSurplusKWhPerInterval,
-  } = forecastHouseSignalsPerInterval(indexedData, history, intervalHours);
-
-  // NOTE: indexedData[].index is not guaranteed to be a dense 0..N-1 range in tests.
-  // Forecast arrays are aligned to the *array position*.
-  const indexToPos = new Map(indexedData.map((p, pos) => [p.index, pos]));
-
-  // Baseline net cost (no battery): pay import at spot price and earn export at feed-in tariff.
-  const baselineCost = importDemandKWhPerInterval.reduce(
-    (sum, d, i) => sum + d * indexedData[i].total,
-    0,
-  ) - solarSurplusKWhPerInterval.reduce(
-    (sum, s) => sum + s * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
-    0,
-  );
-
-  // Step 1: Identify expensive intervals
-  const expensiveIntervals = indexedData.filter((p) => p.total > expensiveThreshold);
-
-  logger.log(`Found ${expensiveIntervals.length} expensive intervals (> ${expensiveThreshold.toFixed(4)} €/kWh)`);
-
-  // Step 2: Calculate import demand (kWh) for each expensive interval (never discharge into export)
-  const chargeAssignments = new Map();
-  const chargeAssignmentsGrid = new Map();
-  const chargeAssignmentsSolar = new Map();
-  const dischargeNeeds = new Map();
-
-  // Track economic cost deltas vs baseline.
-  let deltaCost = 0;
-
-  // Battery cost basis (stored) only applies when using existing energy.
-  const costBasisPerDeliveredKWh = hasBatteryCostBasis ? (batteryCostEurPerKWh / safeEtaDischarge) : null;
-
-  for (const expInterval of expensiveIntervals) {
-    const pos = indexToPos.get(expInterval.index);
-    const demand = (pos !== undefined ? importDemandKWhPerInterval[pos] : 0) || 0;
-    dischargeNeeds.set(expInterval.index, demand);
-  }
-
-  // Step 3: Collect all cheap intervals (grid) and solar surplus intervals (treated as cheap via opportunity cost)
-  const lastExpensiveIndex = expensiveIntervals.length > 0
-    ? expensiveIntervals[expensiveIntervals.length - 1].index
-    : -1;
-
-  const allCheapIntervals = indexedData
-    .filter((p) => lastExpensiveIndex >= 0 && p.index < lastExpensiveIndex)
-    .map((p) => {
-      const pos = indexToPos.get(p.index);
-      const solarSurplusKWh = (pos !== undefined ? solarSurplusKWhPerInterval[pos] : 0) || 0;
-      const hasSolarSurplus = solarSurplusKWh > 0.01;
-
-      if (hasSolarSurplus) {
-        // Treat solar surplus as a "charge source" with effective price = feed-in tariff.
-        return {
-          ...p,
-          _chargeSource: 'solar',
-          _effectiveChargePrice: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
-          _maxChargeKWh: Math.min(energyPerInterval, solarSurplusKWh),
-        };
-      }
-
-      // Grid charging candidate only if below expensive threshold.
-      if (p.total <= expensiveThreshold) {
-        return {
-          ...p,
-          _chargeSource: 'grid',
-          _effectiveChargePrice: p.total,
-          _maxChargeKWh: energyPerInterval,
-        };
-      }
-
-      return null;
-    })
-    .filter(Boolean);
-
-  // Sort by effective charge price (cheapest first)
-  allCheapIntervals.sort((a, b) => a._effectiveChargePrice - b._effectiveChargePrice);
-
-  logger.log(`Found ${allCheapIntervals.length} cheap intervals to distribute energy from`);
-
-  // Track assignments
-  const assignedDischarges = new Set();
-  let totalAssignedCharge = 0;
-
-  // Check battery capacity
-  const canChargeBattery = maxBatteryKWh > 0.01;
-  const currentBatteryKWh = currentSoc * batteryCapacity;
-  const configuredMinEnergyKWh = Number.isFinite(minEnergyKWh) ? Math.max(0, minEnergyKWh) : 0;
-  const effectiveMinEnergyKWh = Math.min(
-    Math.min(configuredMinEnergyKWh, targetSoc * batteryCapacity),
-    currentBatteryKWh,
-  );
-
-  // remainingBatteryEnergyStoredKWh is energy *stored* above the min SoC threshold.
-  let remainingBatteryEnergyStoredKWh = Math.max(0, currentBatteryKWh - effectiveMinEnergyKWh);
-
-  logger.log(`Battery status: ${(currentSoc * 100).toFixed(1)}% = ${currentBatteryKWh.toFixed(2)} kWh available now`);
-  if (effectiveMinEnergyKWh > 0) {
-    logger.log(`   Min SoC reserve: ${effectiveMinEnergyKWh.toFixed(2)} kWh (usable now: ${(remainingBatteryEnergyStoredKWh * safeEtaDischarge).toFixed(2)} kWh delivered)`);
-  }
-  if (canChargeBattery) {
-    logger.log(`   Can charge additional ${maxBatteryKWh.toFixed(2)} kWh (up to ${(targetSoc * 100).toFixed(1)}%)`);
-  } else {
-    logger.log('   Already at target SoC, will only use existing charge');
-  }
-
-  // Sort expensive intervals by price (highest first)
-  const sortedExpensiveIntervals = [...expensiveIntervals].sort((a, b) => b.total - a.total);
-
-  // Assign energy to discharges
-  for (const expInterval of sortedExpensiveIntervals) {
-    const demandKWh = dischargeNeeds.get(expInterval.index);
-    if (!Number.isFinite(demandKWh) || demandKWh < 0.01) {
-      continue;
-    }
-    let assignedEnergy = 0;
-
-    // First, use existing battery charge
-    if (remainingBatteryEnergyStoredKWh > 0.01) {
-      // Only discharge existing energy if profitable vs cost basis (when available)
-      const canUseExistingEnergy = costBasisPerDeliveredKWh === null
-        ? true
-        : (expInterval.total - (costBasisPerDeliveredKWh + effectiveMinProfitEurPerKWh)) > 0;
-
-      if (canUseExistingEnergy) {
-        const maxDeliverableFromStored = remainingBatteryEnergyStoredKWh * safeEtaDischarge;
-        const useFromBatteryDelivered = Math.min(demandKWh, maxDeliverableFromStored);
-        const storedUsed = useFromBatteryDelivered / safeEtaDischarge;
-        remainingBatteryEnergyStoredKWh -= storedUsed;
-        assignedEnergy += useFromBatteryDelivered;
-
-        // Savings from using existing energy (vs buying from grid now)
-        // Only apply when we have a cost basis; otherwise keep legacy semantics
-        // where savings only reflect charge/discharge arbitrage decisions.
-        if (costBasisPerDeliveredKWh !== null) {
-          // Economic savings from using existing energy now:
-          // avoided import at exp price minus cost basis and profit margin per delivered kWh.
-          const perKWhSavings = expInterval.total - (costBasisPerDeliveredKWh + effectiveMinProfitEurPerKWh);
-          // In cost terms, this is a reduction of baseline cost.
-          deltaCost -= perKWhSavings * useFromBatteryDelivered;
-        }
-      }
-
-      if (assignedEnergy >= demandKWh - 0.01) {
-        assignedDischarges.add(expInterval.index);
-        continue;
-      }
-    }
-
-    // If more energy needed, try to charge from cheap intervals
-    if (!canChargeBattery) {
-      continue;
-    }
-
-    if (totalAssignedCharge >= maxBatteryKWh - 0.01) {
-      break;
-    }
-
-    for (const chargeInterval of allCheapIntervals) {
-      if (chargeInterval.index >= expInterval.index) continue;
-
-      const effectiveChargePrice = chargeInterval._effectiveChargePrice * (1 + efficiencyLoss);
-      const priceDiff = expInterval.total - effectiveChargePrice;
-
-      if (priceDiff <= minProfitEurPerKWh) {
-        break;
-      }
-
-      const alreadyAssigned = chargeAssignments.get(chargeInterval.index) || 0;
-      const remainingCapacity = chargeInterval._maxChargeKWh - alreadyAssigned;
-
-      if (remainingCapacity < 0.01) continue;
-
-      const stillNeededNow = demandKWh - assignedEnergy;
-      if (stillNeededNow < 0.01) break;
-
-      const remainingBatteryCapacity = maxBatteryKWh - totalAssignedCharge;
-      if (remainingBatteryCapacity < 0.01) {
-        break;
-      }
-
-      const toAssign = Math.min(remainingCapacity, stillNeededNow, remainingBatteryCapacity);
-      chargeAssignments.set(chargeInterval.index, alreadyAssigned + toAssign);
-
-      if (chargeInterval._chargeSource === 'solar') {
-        chargeAssignmentsSolar.set(chargeInterval.index, (chargeAssignmentsSolar.get(chargeInterval.index) || 0) + toAssign);
-        // Solar charge opportunity cost (lost feed-in revenue)
-        deltaCost += SOLAR_FEED_IN_TARIFF_EUR_PER_KWH * toAssign;
-      } else {
-        chargeAssignmentsGrid.set(chargeInterval.index, (chargeAssignmentsGrid.get(chargeInterval.index) || 0) + toAssign);
-        // Grid charge cost
-        deltaCost += chargeInterval.total * toAssign;
-      }
-
-      // Discharge avoids import at expensive price
-      deltaCost -= expInterval.total * toAssign;
-
-      // Profit margin requirement (modeled as extra cost when discharging)
-      deltaCost += effectiveMinProfitEurPerKWh * toAssign;
-
-      assignedEnergy += toAssign;
-      totalAssignedCharge += toAssign;
-
-      if (assignedEnergy >= demandKWh - 0.01) break;
-      if (totalAssignedCharge >= maxBatteryKWh - 0.01) break;
-    }
-
-    if (assignedEnergy >= demandKWh - 0.01) {
-      assignedDischarges.add(expInterval.index);
-    }
-  }
-
-  // Step 4: Build final interval lists
-  const selectedChargeIntervals = indexedData.filter((p) => chargeAssignments.has(p.index));
-  const selectedDischargeIntervals = expensiveIntervals
-    .filter((exp) => assignedDischarges.has(exp.index))
-    .map((exp) => ({ ...exp, demandKWh: dischargeNeeds.get(exp.index) }));
-
-  const totalChargeKWh = Array.from(chargeAssignments.values()).reduce((sum, val) => sum + val, 0);
-  const totalDischargeKWh = selectedDischargeIntervals
-    .map((exp) => exp.demandKWh)
-    .reduce((sum, val) => sum + val, 0);
-
-  // Sort chronologically
-  selectedChargeIntervals.sort((a, b) => a.index - b.index);
-  selectedDischargeIntervals.sort((a, b) => a.index - b.index);
-
-  logger.log(`Energy balance: ${totalChargeKWh.toFixed(2)} kWh charged = ${totalDischargeKWh.toFixed(2)} kWh needed`);
-  logger.log(`Selected ${selectedChargeIntervals.length} charge intervals, ${selectedDischargeIntervals.length} discharge intervals`);
-  // Economic savings vs baseline, including solar feed-in opportunity cost.
-  // We compute from deltaCost so it stays meaningful even when there are no explicit charge intervals.
-  const optimizedCost = baselineCost + deltaCost;
-  const economicSavings = Math.max(0, baselineCost - optimizedCost);
-
-  logger.log(`Total estimated savings: €${economicSavings.toFixed(2)}`);
-
-  return {
-    chargeIntervals: selectedChargeIntervals,
-    dischargeIntervals: selectedDischargeIntervals,
-    expensiveIntervals,
-    avgPrice,
-    neededKWh: totalChargeKWh,
-    forecastedDemand: totalDischargeKWh,
-    savings: economicSavings,
-    economics: {
-      baselineCost,
-      optimizedCost,
-      savings: economicSavings,
-      totalGridChargeKWh: Array.from(chargeAssignmentsGrid.values()).reduce((sum, val) => sum + val, 0),
-      totalSolarChargeKWh: Array.from(chargeAssignmentsSolar.values()).reduce((sum, val) => sum + val, 0),
-    },
-    expensiveThreshold,
-  };
-}
-
-/**
  * Optimize strategy using Linear Programming solver
  * @param {Array} indexedData - Price intervals with index and intervalOfDay
  * @param {Object} params - Battery and optimization parameters
@@ -435,7 +132,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
 
   if (!lpSolver) {
     if (logger) {
-      logger.log('LP solver not available, will use heuristic optimizer');
+      logger.log('LP solver not available');
     }
     return null;
   }
@@ -593,53 +290,53 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     // Charge power: 0 <= c_t + sc_t <= energyPerInterval
     const cCapName = `cCap_${t}`;
     constraints[cCapName] = { max: energyPerInterval };
-    constraints[cCapName][cVar] = 1;
-    constraints[cCapName][scVar] = 1;
+    variables[cVar][cCapName] = 1;
+    variables[scVar][cCapName] = 1;
 
     // Solar surplus availability: 0 <= sc_t <= solarSurplus
     const scCapName = `scCap_${t}`;
     constraints[scCapName] = { max: solarSurplus };
-    constraints[scCapName][scVar] = 1;
+    variables[scVar][scCapName] = 1;
 
     // Discharge power: 0 <= d0_t + d1_t <= maxDischargePerInterval
     const dCapName = `dCap_${t}`;
     constraints[dCapName] = { max: maxDischargePerInterval };
-    constraints[dCapName][d0Var] = 1;
-    constraints[dCapName][d1Var] = 1;
+    variables[d0Var][dCapName] = 1;
+    variables[d1Var][dCapName] = 1;
 
     // SoC upper bound: soc_t <= maxEnergyKWh
     const sCapName = `sCap_${t}`;
     constraints[sCapName] = { max: maxEnergyKWh };
-    constraints[sCapName][sVar] = 1;
+    variables[sVar][sCapName] = 1;
 
     // SoC lower bound (min SoC threshold): soc_t >= effectiveMinEnergyKWh
     if (effectiveMinEnergyKWh > 0) {
       const sMinName = `sMin_${t}`;
       constraints[sMinName] = { min: effectiveMinEnergyKWh };
-      constraints[sMinName][sVar] = 1;
+      variables[sVar][sMinName] = 1;
     }
 
     // Discharge not more than import demand (never export while discharging)
     const dDemandName = `demandLimit_${t}`;
     constraints[dDemandName] = { max: importDemand };
-    constraints[dDemandName][d0Var] = 1;
-    constraints[dDemandName][d1Var] = 1;
+    variables[d0Var][dDemandName] = 1;
+    variables[d1Var][dDemandName] = 1;
 
     // Existing-energy state bounds
     const eCapName = `eCap_${t}`;
     constraints[eCapName] = { max: currentEnergyKWh };
-    constraints[eCapName][eVar] = 1;
+    variables[eVar][eCapName] = 1;
 
     const eNonNegName = `eNonNeg_${t}`;
     constraints[eNonNegName] = { min: 0 };
-    constraints[eNonNegName][eVar] = 1;
+    variables[eVar][eNonNegName] = 1;
 
     // Ensure existing-energy portion is never larger than total SoC:
     // e_t <= s_t  =>  s_t - e_t >= 0
     const eLeSocName = `eLeSoc_${t}`;
     constraints[eLeSocName] = { min: 0 };
-    constraints[eLeSocName][sVar] = 1;
-    constraints[eLeSocName][eVar] = -1;
+    variables[sVar][eLeSocName] = 1;
+    variables[eVar][eLeSocName] = -1;
   }
 
   // 4) SoC dynamics with efficiency
@@ -657,29 +354,29 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     const soc0Min = 'soc0_eqMin';
 
     constraints[soc0Max] = { max: currentEnergyKWh };
-    constraints[soc0Max][s0] = 1;
-    constraints[soc0Max][c0] = -etaCharge;
-    constraints[soc0Max][sc0] = -etaCharge;
-    constraints[soc0Max][d00] = 1 / etaDischarge;
-    constraints[soc0Max][d10] = 1 / etaDischarge;
+    variables[s0][soc0Max] = 1;
+    variables[c0][soc0Max] = -etaCharge;
+    variables[sc0][soc0Max] = -etaCharge;
+    variables[d00][soc0Max] = 1 / etaDischarge;
+    variables[d10][soc0Max] = 1 / etaDischarge;
 
     constraints[soc0Min] = { min: currentEnergyKWh };
-    constraints[soc0Min][s0] = 1;
-    constraints[soc0Min][c0] = -etaCharge;
-    constraints[soc0Min][sc0] = -etaCharge;
-    constraints[soc0Min][d00] = 1 / etaDischarge;
-    constraints[soc0Min][d10] = 1 / etaDischarge;
+    variables[s0][soc0Min] = 1;
+    variables[c0][soc0Min] = -etaCharge;
+    variables[sc0][soc0Min] = -etaCharge;
+    variables[d00][soc0Min] = 1 / etaDischarge;
+    variables[d10][soc0Min] = 1 / etaDischarge;
 
     const e0EqMax = 'e0_eqMax';
     const e0EqMin = 'e0_eqMin';
 
     constraints[e0EqMax] = { max: currentEnergyKWh };
-    constraints[e0EqMax][e0] = 1;
-    constraints[e0EqMax][d00] = 1 / etaDischarge;
+    variables[e0][e0EqMax] = 1;
+    variables[d00][e0EqMax] = 1 / etaDischarge;
 
     constraints[e0EqMin] = { min: currentEnergyKWh };
-    constraints[e0EqMin][e0] = 1;
-    constraints[e0EqMin][d00] = 1 / etaDischarge;
+    variables[e0][e0EqMin] = 1;
+    variables[d00][e0EqMin] = 1 / etaDischarge;
   }
 
   // For t >= 1:
@@ -700,33 +397,33 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     const socEqMin = `soc_${t}_eqMin`;
 
     constraints[socEqMax] = { max: 0 };
-    constraints[socEqMax][sVar] = 1;
-    constraints[socEqMax][sPrev] = -1;
-    constraints[socEqMax][cVar] = -etaCharge;
-    constraints[socEqMax][scVar] = -etaCharge;
-    constraints[socEqMax][d0Var] = 1 / etaDischarge;
-    constraints[socEqMax][d1Var] = 1 / etaDischarge;
+    variables[sVar][socEqMax] = 1;
+    variables[sPrev][socEqMax] = -1;
+    variables[cVar][socEqMax] = -etaCharge;
+    variables[scVar][socEqMax] = -etaCharge;
+    variables[d0Var][socEqMax] = 1 / etaDischarge;
+    variables[d1Var][socEqMax] = 1 / etaDischarge;
 
     constraints[socEqMin] = { min: 0 };
-    constraints[socEqMin][sVar] = 1;
-    constraints[socEqMin][sPrev] = -1;
-    constraints[socEqMin][cVar] = -etaCharge;
-    constraints[socEqMin][scVar] = -etaCharge;
-    constraints[socEqMin][d0Var] = 1 / etaDischarge;
-    constraints[socEqMin][d1Var] = 1 / etaDischarge;
+    variables[sVar][socEqMin] = 1;
+    variables[sPrev][socEqMin] = -1;
+    variables[cVar][socEqMin] = -etaCharge;
+    variables[scVar][socEqMin] = -etaCharge;
+    variables[d0Var][socEqMin] = 1 / etaDischarge;
+    variables[d1Var][socEqMin] = 1 / etaDischarge;
 
     const eEqMax = `e_${t}_eqMax`;
     const eEqMin = `e_${t}_eqMin`;
 
     constraints[eEqMax] = { max: 0 };
-    constraints[eEqMax][eVar] = 1;
-    constraints[eEqMax][ePrev] = -1;
-    constraints[eEqMax][d0Var] = 1 / etaDischarge;
+    variables[eVar][eEqMax] = 1;
+    variables[ePrev][eEqMax] = -1;
+    variables[d0Var][eEqMax] = 1 / etaDischarge;
 
     constraints[eEqMin] = { min: 0 };
-    constraints[eEqMin][eVar] = 1;
-    constraints[eEqMin][ePrev] = -1;
-    constraints[eEqMin][d0Var] = 1 / etaDischarge;
+    variables[eVar][eEqMin] = 1;
+    variables[ePrev][eEqMin] = -1;
+    variables[d0Var][eEqMin] = 1 / etaDischarge;
   }
 
   // 5) Solve LP
@@ -735,25 +432,37 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     result = lpSolver.Solve(model);
   } catch (error) {
     if (logger) {
-      logger.log(`LP solver error, will use heuristic: ${error.message}`);
+      logger.log(`LP solver error: ${error.message}`);
     }
     return null;
   }
 
-  if (!result || typeof result.totalCost !== 'number' || !result.feasible) {
+  // javascript-lp-solver typically returns the objective as `result.result`.
+  // Older wrappers/tests may use `result.totalCost`.
+  let objectiveValue = null;
+  if (result && Number.isFinite(result.totalCost)) {
+    objectiveValue = result.totalCost;
+  } else if (result && Number.isFinite(result.result)) {
+    objectiveValue = result.result;
+  }
+
+  if (!result || objectiveValue === null || !result.feasible) {
     if (logger) {
-      logger.log('LP solver returned no valid solution, will use heuristic');
+      logger.log('LP solver returned no valid solution');
     }
     return null;
   }
 
   // 6) Interpret solution
   const chargeIntervals = [];
+  const chargeDisplayEntries = [];
   const dischargeIntervals = [];
   let totalChargeKWh = 0;
   let totalDischargeKWh = 0;
   let totalSolarChargeKWh = 0;
   let totalGridChargeKWh = 0;
+  let totalSolarChargeCostEur = 0;
+  let totalGridChargeCostEur = 0;
 
   const EPS = 0.01;
 
@@ -773,11 +482,55 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
       totalChargeKWh += totalIntervalCharge;
       totalGridChargeKWh += charge;
       totalSolarChargeKWh += solarCharge;
+
+      const plannedChargeParts = [];
+
+      if (charge > EPS) {
+        const gridCostEur = charge * indexedData[t].total;
+        totalGridChargeCostEur += gridCostEur;
+        plannedChargeParts.push({
+          source: 'grid',
+          symbol: '⚡',
+          energyKWh: charge,
+          priceEurPerKWh: indexedData[t].total,
+          costEur: gridCostEur,
+        });
+        chargeDisplayEntries.push({
+          ...indexedData[t],
+          plannedEnergySource: 'grid',
+          plannedSymbol: '⚡',
+          plannedEnergyKWh: charge,
+          plannedPriceEurPerKWh: indexedData[t].total,
+          plannedCostEur: gridCostEur,
+        });
+      }
+
+      if (solarCharge > EPS) {
+        const solarCostEur = solarCharge * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH;
+        totalSolarChargeCostEur += solarCostEur;
+        plannedChargeParts.push({
+          source: 'solar',
+          symbol: '☀',
+          energyKWh: solarCharge,
+          priceEurPerKWh: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
+          costEur: solarCostEur,
+        });
+        chargeDisplayEntries.push({
+          ...indexedData[t],
+          plannedEnergySource: 'solar',
+          plannedSymbol: '☀',
+          plannedEnergyKWh: solarCharge,
+          plannedPriceEurPerKWh: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
+          plannedCostEur: solarCostEur,
+        });
+      }
+
       const chargeInterval = {
         ...indexedData[t],
         plannedEnergyKWh: totalIntervalCharge,
         plannedGridEnergyKWh: charge,
         plannedSolarEnergyKWh: solarCharge,
+        plannedChargeParts,
       };
       chargeIntervals.push(chargeInterval);
     }
@@ -794,9 +547,22 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     }
   }
 
-  const optimizedVariableCost = result.totalCost || 0;
+  const optimizedVariableCost = objectiveValue;
   const optimizedTotalCost = baselineCost + optimizedVariableCost;
   const savings = Math.max(0, baselineCost - optimizedTotalCost);
+
+  const totalChargeCostEur = totalGridChargeCostEur + totalSolarChargeCostEur;
+  const avgChargePriceEurPerKWh = totalChargeKWh > 0 ? (totalChargeCostEur / totalChargeKWh) : 0;
+  const plannedCharging = {
+    totalEnergyKWh: totalChargeKWh,
+    totalCostEur: totalChargeCostEur,
+    avgPriceEurPerKWh: avgChargePriceEurPerKWh,
+    gridEnergyKWh: totalGridChargeKWh,
+    solarEnergyKWh: totalSolarChargeKWh,
+    gridCostEur: totalGridChargeCostEur,
+    solarCostEur: totalSolarChargeCostEur,
+    solarTariffEurPerKWh: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
+  };
 
   if (logger) {
     logger.log(`LP: baseline cost = €${baselineCost.toFixed(2)}, optimized = €${optimizedTotalCost.toFixed(2)}, savings = €${savings.toFixed(2)}`);
@@ -806,11 +572,13 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
 
   return {
     chargeIntervals,
+    chargeDisplayEntries,
     dischargeIntervals,
     totalChargeKWh,
     totalDischargeKWh,
     totalGridChargeKWh,
     totalSolarChargeKWh,
+    plannedCharging,
     economics: {
       baselineCost,
       optimizedCost: optimizedTotalCost,
@@ -821,7 +589,6 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
 }
 
 module.exports = {
-  computeHeuristicStrategy,
   optimizeStrategyWithLp,
   forecastHouseSignalsPerInterval,
   getPercentile,

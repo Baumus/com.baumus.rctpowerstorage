@@ -392,7 +392,7 @@ describe('LP Optimizer Logic', () => {
       const model = mockLpSolver.Solve.mock.calls[0][0];
       expect(model.constraints.scCap_0).toBeDefined();
       expect(model.constraints.scCap_0.max).toBeCloseTo(1.0, 6);
-      expect(model.constraints.scCap_0.sc_0).toBe(1);
+      expect(model.variables.sc_0.scCap_0).toBe(1);
     });
 
     test('adds min SoC constraint (sMin_*) when minEnergyKWh is provided', () => {
@@ -418,11 +418,11 @@ describe('LP Optimizer Logic', () => {
       const model = mockLpSolver.Solve.mock.calls[0][0];
       expect(model.constraints.sMin_0).toBeDefined();
       expect(model.constraints.sMin_0.min).toBeCloseTo(2.0, 6);
-      expect(model.constraints.sMin_0.s_0).toBe(1);
+      expect(model.variables.s_0.sMin_0).toBe(1);
 
       expect(model.constraints.sMin_1).toBeDefined();
       expect(model.constraints.sMin_1.min).toBeCloseTo(2.0, 6);
-      expect(model.constraints.sMin_1.s_1).toBe(1);
+      expect(model.variables.s_1.sMin_1).toBe(1);
     });
   });
 

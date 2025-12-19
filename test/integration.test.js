@@ -8,9 +8,15 @@
  * integration points between modules and ensure data flows correctly.
  */
 
-const {
-  computeHeuristicStrategy,
-} = require('../drivers/energy-optimizer/optimizer-core');
+const { optimizeStrategyWithLp } = require('../drivers/energy-optimizer/optimizer-core');
+
+let lpSolver;
+try {
+  // eslint-disable-next-line global-require
+  lpSolver = require('../lib/javascript-lp-solver/src/main');
+} catch (e) {
+  lpSolver = null;
+}
 
 const {
   decideBatteryMode,
@@ -36,115 +42,70 @@ const {
 
 describe('Integration Tests - Light', () => {
   describe('Full Optimization Flow', () => {
-    it('should complete full optimization cycle from price data to battery mode', () => {
-      // 1. Create price data for 24 hours
-      const priceData = [];
-      const baseTime = new Date(2024, 0, 15, 0, 0, 0);
-      for (let i = 0; i < 96; i++) {
-        const time = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-        priceData.push({
-          startsAt: time.toISOString(),
-          total: 0.15 + Math.sin(i / 10) * 0.10, // Varying prices
-        });
+    it('should complete LP optimization cycle from price data to battery mode', () => {
+      if (!lpSolver) {
+        // eslint-disable-next-line jest/no-conditional-expect
+        expect(lpSolver).not.toBeNull();
+        return;
       }
 
-      // 2. Enrich price data with time-scheduling-core
-      const enriched = enrichPriceData(priceData);
-      expect(enriched.length).toBe(96);
-      expect(enriched[0]).toHaveProperty('index');
-      expect(enriched[0]).toHaveProperty('intervalOfDay');
+      // Two intervals: charge in cheap slot, discharge in expensive slot.
+      const baseTime = new Date('2025-01-01T00:00:00.000Z');
+      const priceData = [
+        { startsAt: baseTime.toISOString(), total: 0.10 },
+        { startsAt: new Date(baseTime.getTime() + 15 * 60 * 1000).toISOString(), total: 0.40 },
+      ];
 
-      // 3. Filter to current and future intervals
-      const now = new Date(2024, 0, 15, 8, 0, 0); // 8 AM
-      const filtered = filterCurrentAndFutureIntervals(enriched, now, 15);
-      expect(filtered.length).toBeGreaterThan(0);
-      expect(filtered.length).toBeLessThanOrEqual(96);
+      const indexedData = enrichPriceData(priceData);
+      expect(indexedData[0]).toHaveProperty('intervalOfDay');
+      expect(indexedData[1]).toHaveProperty('intervalOfDay');
 
-      // 4. Run optimization
       const params = {
         batteryCapacity: 10,
-        currentSoc: 0.2,
-        targetSoc: 0.8,
-        chargePowerKW: 3.3,
+        currentSoc: 0.0,
+        targetSoc: 0.2,
+        chargePowerKW: 5,
         intervalHours: 0.25,
         efficiencyLoss: 0.1,
-        expensivePriceFactor: 1.05,
-        minProfitEurPerKWh: 0.05,
+        minEnergyKWh: 0,
+        minProfitEurPerKWh: 0,
       };
 
       const history = {
-        // Use defaults in forecastHouseSignalsPerInterval
         productionHistory: {},
-        consumptionHistory: {},
         batteryHistory: {},
+        consumptionHistory: {
+          // No demand in first interval, 4kW import in second interval
+          [indexedData[0].intervalOfDay]: [0, 0, 0],
+          [indexedData[1].intervalOfDay]: [4000, 4000, 4000],
+        },
       };
 
-      const strategy = computeHeuristicStrategy(filtered, params, history);
-      
-      // Strategy may be null if no optimization possible
-      if (strategy) {
-        expect(strategy.chargeIntervals).toBeDefined();
-        expect(strategy.dischargeIntervals).toBeDefined();
-      } else {
-        // If no strategy, that's also valid (not enough data)
-        expect(strategy).toBeNull();
-      }
+      const strategy = optimizeStrategyWithLp(indexedData, params, history, { lpSolver });
+      expect(strategy).not.toBeNull();
+      expect(strategy.chargeIntervals.length).toBeGreaterThan(0);
+      expect(strategy.dischargeIntervals.length).toBeGreaterThan(0);
 
-      // 6. Decide battery mode based on strategy (if we have one)
-      if (strategy) {
-        const currentInterval = findCurrentIntervalIndex(now, filtered, 15);
-        expect(currentInterval).toBeGreaterThanOrEqual(0);
-
-        const decision = decideBatteryMode(strategy, currentInterval, 0.50, params, 0, 2.0);
-
-        expect(decision).toBeDefined();
-        expect(decision.mode).toMatch(/^(CHARGE|DISCHARGE|IDLE|NORMAL_SOLAR|NORMAL_HOLD)$/);
-        expect(decision.reason).toBeDefined();
-      }
-    });
-
-    it('should handle optimization with solar forecast', () => {
-      // Create price data
-      const priceData = [];
-      const baseTime = new Date(2024, 0, 15, 0, 0, 0);
-      for (let i = 0; i < 96; i++) {
-        const time = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-        priceData.push({
-          startsAt: time.toISOString(),
-          total: 0.20,
-        });
-      }
-
-      const enriched = enrichPriceData(priceData);
-      const now = new Date(2024, 0, 15, 10, 0, 0);
-      const filtered = filterCurrentAndFutureIntervals(enriched, now, 15);
-
-      // Solar forecast: high during day (10 AM - 4 PM)
-      const solarForecast = enriched.map((entry, i) => {
-        const hour = Math.floor(i / 4);
-        return hour >= 10 && hour < 16 ? 4.0 : 0; // 4kW during sunny hours
+      const decisionCharge = decideBatteryMode({
+        now: new Date(indexedData[0].startsAt),
+        priceCache: indexedData,
+        strategy,
+        gridPower: 0,
+        intervalMinutes: 15,
       });
 
-      const params = {
-        batteryCapacity: 10,
-        maxChargePower: 3.3,
-        maxDischargePower: 3.3,
-        batteryEfficiency: 0.95,
-        minSoC: 0.10,
-        maxSoC: 0.95,
+      const decisionDischarge = decideBatteryMode({
+        now: new Date(indexedData[1].startsAt),
+        priceCache: indexedData,
+        strategy,
+        gridPower: 0,
         intervalMinutes: 15,
-        solarForecast,
-        demandForecast: 5.0,
-      };
+      });
 
-      const strategy = computeHeuristicStrategy(filtered, params, [5, 5, 5]);
-      
-      // Strategy may include discharge intervals (solar provides energy)
-      if (strategy) {
-        expect(strategy.dischargeIntervals).toBeDefined();
-        // With solar, we expect some optimization strategy
-        expect(strategy.chargeIntervals || strategy.dischargeIntervals).toBeTruthy();
-      }
+      expect(decisionCharge).toBeDefined();
+      expect(decisionDischarge).toBeDefined();
+      expect(decisionCharge.mode).toBe(BATTERY_MODE.CHARGE);
+      expect(decisionDischarge.mode).toBe(BATTERY_MODE.DISCHARGE);
     });
   });
 
@@ -230,136 +191,6 @@ describe('Integration Tests - Light', () => {
       expect(costResult.avgPrice).toBeLessThan(0.25); // Should be lower due to solar
       expect(costResult.solarKWh).toBeCloseTo(2.0, 1);
       expect(costResult.gridKWh).toBeCloseTo(2.0, 1);
-    });
-  });
-
-  describe('Time-Based Decision Making', () => {
-    it('should make correct decisions based on time of day', () => {
-      const baseTime = new Date(2024, 0, 15, 0, 0, 0);
-      
-      // Create price data with clear peaks and valleys
-      const priceData = Array.from({ length: 96 }, (_, i) => {
-        const time = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-        const hour = time.getHours();
-        
-        // High prices 17-21, low prices 2-6
-        let price = 0.20;
-        if (hour >= 17 && hour < 21) price = 0.35; // Peak
-        if (hour >= 2 && hour < 6) price = 0.10; // Valley
-        
-        return {
-          startsAt: time.toISOString(),
-          total: price,
-        };
-      });
-
-      const enriched = enrichPriceData(priceData);
-
-      // Test 1: At 3 AM (low price) with low SoC - should charge
-      const earlyMorning = new Date(2024, 0, 15, 3, 0, 0);
-      const filteredMorning = filterCurrentAndFutureIntervals(enriched, earlyMorning, 15);
-      
-      const params = {
-        batteryCapacity: 10,
-        maxChargePower: 3.3,
-        maxDischargePower: 3.3,
-        batteryEfficiency: 0.95,
-        minSoC: 0.10,
-        maxSoC: 0.95,
-        intervalMinutes: 15,
-        solarForecast: Array(96).fill(0),
-        demandForecast: 5.0,
-      };
-
-      const strategyMorning = computeHeuristicStrategy(
-        filteredMorning,
-        params,
-        [5, 5, 5],
-      );
-
-      const currentIdxMorning = findCurrentIntervalIndex(earlyMorning, filteredMorning, 15);
-      const decisionMorning = decideBatteryMode(
-        strategyMorning,
-        currentIdxMorning,
-        0.30, // Low SoC
-        params,
-        0,
-        2.0,
-      );
-
-      // Should charge during low price period (or at least not discharge)
-      // Mode can be CHARGE or IDLE depending on strategy
-      expect([BATTERY_MODE.CHARGE, BATTERY_MODE.IDLE]).toContain(decisionMorning.mode);
-
-      // Test 2: At 6 PM (high price) with high SoC - should discharge
-      const evening = new Date(2024, 0, 15, 18, 0, 0);
-      const filteredEvening = filterCurrentAndFutureIntervals(enriched, evening, 15);
-      
-      const strategyEvening = computeHeuristicStrategy(
-        filteredEvening,
-        params,
-        [5, 5, 5],
-      );
-
-      const currentIdxEvening = findCurrentIntervalIndex(evening, filteredEvening, 15);
-      const decisionEvening = decideBatteryMode(
-        strategyEvening,
-        currentIdxEvening,
-        0.80, // High SoC
-        params,
-        0,
-        3.0, // High demand
-      );
-
-      // Should discharge during high price period (or at least not charge)
-      // Mode can be DISCHARGE, NORMAL_HOLD, or IDLE depending on strategy
-      expect([BATTERY_MODE.DISCHARGE, BATTERY_MODE.NORMAL_HOLD, BATTERY_MODE.IDLE]).toContain(decisionEvening.mode);
-    });
-
-    it('should respect battery SoC limits', () => {
-      const priceData = [];
-      const baseTime = new Date(2024, 0, 15, 0, 0, 0);
-      for (let i = 0; i < 96; i++) {
-        const time = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-        priceData.push({
-          startsAt: time.toISOString(),
-          total: 0.10, // Very low price
-        });
-      }
-
-      const enriched = enrichPriceData(priceData);
-      const now = new Date(2024, 0, 15, 3, 0, 0);
-      const filtered = filterCurrentAndFutureIntervals(enriched, now, 15);
-
-      const params = {
-        batteryCapacity: 10,
-        maxChargePower: 3.3,
-        maxDischargePower: 3.3,
-        batteryEfficiency: 0.95,
-        minSoC: 0.10,
-        maxSoC: 0.95,
-        intervalMinutes: 15,
-        solarForecast: Array(96).fill(0),
-        demandForecast: 5.0,
-      };
-
-      const strategy = computeHeuristicStrategy(filtered, params, [5, 5, 5]) || { chargeIntervals: [], dischargeIntervals: [] };
-      const currentIdx = findCurrentIntervalIndex(now, filtered, 15);
-
-      // Test: Already at max SoC - should NOT charge even with low price
-      const decision = decideBatteryMode(
-        strategy,
-        currentIdx,
-        0.95, // At max SoC
-        params,
-        0,
-        2.0,
-      );
-
-      // At max SoC, should be IDLE (not charging)
-      expect(decision.mode).toBe(BATTERY_MODE.IDLE);
-      // Reason may vary, but mode should be IDLE
-      expect(decision.reason).toBeDefined();
     });
   });
 
@@ -455,72 +286,6 @@ describe('Integration Tests - Light', () => {
       const smallCostResult = calculateBatteryEnergyCost(chargeLog);
       expect(smallCostResult).toBeDefined();
       expect(smallCostResult.avgPrice).toBeGreaterThan(0);
-    });
-  });
-
-  describe('Real-World Scenario Simulation', () => {
-    it('should handle a typical day cycle', () => {
-      // Simulate a full 24-hour cycle
-      const baseTime = new Date(2024, 0, 15, 0, 0, 0);
-      
-      // Realistic price curve (low at night, high in evening)
-      const priceData = Array.from({ length: 96 }, (_, i) => {
-        const time = new Date(baseTime.getTime() + i * 15 * 60 * 1000);
-        const hour = time.getHours();
-        
-        let price = 0.20; // Base price
-        if (hour >= 0 && hour < 6) price = 0.12; // Night
-        if (hour >= 6 && hour < 9) price = 0.22; // Morning
-        if (hour >= 9 && hour < 17) price = 0.18; // Day
-        if (hour >= 17 && hour < 22) price = 0.32; // Evening peak
-        if (hour >= 22) price = 0.15; // Late evening
-        
-        return { startsAt: time.toISOString(), total: price };
-      });
-
-      // Realistic solar forecast (0-6kW curve)
-      const solarForecast = Array.from({ length: 96 }, (_, i) => {
-        const hour = Math.floor(i / 4);
-        if (hour < 6 || hour > 20) return 0;
-        if (hour < 12) return (hour - 6) * 1.0; // Ramp up
-        return Math.max(0, (20 - hour) * 0.75); // Ramp down
-      });
-
-      const enriched = enrichPriceData(priceData);
-      
-      const params = {
-        batteryCapacity: 10,
-        maxChargePower: 3.3,
-        maxDischargePower: 3.3,
-        batteryEfficiency: 0.95,
-        minSoC: 0.10,
-        maxSoC: 0.95,
-        intervalMinutes: 15,
-        solarForecast,
-        demandForecast: 6.0,
-      };
-
-      // Night (3 AM): Should charge at low price
-      const night = new Date(2024, 0, 15, 3, 0, 0);
-      const filteredNight = filterCurrentAndFutureIntervals(enriched, night, 15);
-      const strategyNight = computeHeuristicStrategy(filteredNight, params, [6, 6, 6]);
-      
-      // Strategy may exist or be null
-      if (strategyNight) {
-        expect(strategyNight.chargeIntervals || strategyNight.dischargeIntervals).toBeTruthy();
-      }
-
-      // Evening (6 PM): Should discharge at high price
-      const evening = new Date(2024, 0, 15, 18, 0, 0);
-      const filteredEvening = filterCurrentAndFutureIntervals(enriched, evening, 15);
-      const strategyEvening = computeHeuristicStrategy(filteredEvening, params, [6, 6, 6]);
-      
-      if (strategyEvening) {
-        expect(strategyEvening.chargeIntervals || strategyEvening.dischargeIntervals).toBeTruthy();
-      }
-
-      // Verify that optimization ran (strategies may be null or have data)
-      expect(true).toBe(true); // Always passes - we tested the flow
     });
   });
 

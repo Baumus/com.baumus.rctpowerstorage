@@ -106,9 +106,12 @@ function decideBatteryMode(params) {
   };
 
   // Check if current interval is a planned charge slot
-  const shouldCharge = strategy.chargeIntervals
-    && Array.isArray(strategy.chargeIntervals)
-    && strategy.chargeIntervals.some(matchesCurrentInterval);
+  const chargeIntervals = (strategy.chargeIntervals && Array.isArray(strategy.chargeIntervals))
+    ? strategy.chargeIntervals
+    : [];
+
+  const matchedChargeInterval = chargeIntervals.find(matchesCurrentInterval) || null;
+  const shouldCharge = Boolean(matchedChargeInterval);
 
   // Check if current interval is a planned discharge slot
   const shouldDischarge = strategy.dischargeIntervals
@@ -117,10 +120,75 @@ function decideBatteryMode(params) {
 
   // Priority 1: Charge interval
   if (shouldCharge) {
+    const EPS_KWH = 0.001;
+    const plannedGridEnergyKWh = (() => {
+      if (!matchedChargeInterval || typeof matchedChargeInterval !== 'object') return null;
+      if (Number.isFinite(matchedChargeInterval.plannedGridEnergyKWh)) return matchedChargeInterval.plannedGridEnergyKWh;
+      if (Array.isArray(matchedChargeInterval.plannedChargeParts)) {
+        return matchedChargeInterval.plannedChargeParts
+          .filter((p) => p && p.source === 'grid')
+          .reduce((sum, p) => sum + (Number.isFinite(p.energyKWh) ? p.energyKWh : 0), 0);
+      }
+      // Some callers might provide a flattened plannedEnergySource
+      if (matchedChargeInterval.plannedEnergySource === 'grid' && Number.isFinite(matchedChargeInterval.plannedEnergyKWh)) {
+        return matchedChargeInterval.plannedEnergyKWh;
+      }
+      return null;
+    })();
+
+    const plannedSolarEnergyKWh = (() => {
+      if (!matchedChargeInterval || typeof matchedChargeInterval !== 'object') return null;
+      if (Number.isFinite(matchedChargeInterval.plannedSolarEnergyKWh)) return matchedChargeInterval.plannedSolarEnergyKWh;
+      if (Array.isArray(matchedChargeInterval.plannedChargeParts)) {
+        return matchedChargeInterval.plannedChargeParts
+          .filter((p) => p && p.source === 'solar')
+          .reduce((sum, p) => sum + (Number.isFinite(p.energyKWh) ? p.energyKWh : 0), 0);
+      }
+      if (matchedChargeInterval.plannedEnergySource === 'solar' && Number.isFinite(matchedChargeInterval.plannedEnergyKWh)) {
+        return matchedChargeInterval.plannedEnergyKWh;
+      }
+      return null;
+    })();
+
+    const hasPlannedGridCharge = Number.isFinite(plannedGridEnergyKWh) && plannedGridEnergyKWh > EPS_KWH;
+    const hasPlannedSolarCharge = Number.isFinite(plannedSolarEnergyKWh) && plannedSolarEnergyKWh > EPS_KWH;
+
+    // Battery_Mode.CHARGE must only be used for charging from grid.
+    if (hasPlannedGridCharge || (!hasPlannedSolarCharge && !hasPlannedGridCharge)) {
+      return {
+        mode: BATTERY_MODE.CHARGE,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned grid charge interval (price: ${priceCache[currentIntervalIndex]?.total?.toFixed(4)} €/kWh)`,
+      };
+    }
+
+    // Planned solar-excess charging: decide between NORMAL_SOLAR and NORMAL_HOLD by gridPower thresholds.
+    const { solarThreshold, consumptionThreshold } = thresholds;
+
+    if (gridPower < solarThreshold) {
+      return {
+        mode: BATTERY_MODE.NORMAL_SOLAR,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned solar charge: solar excess detected (${gridPower.toFixed(0)} W < ${solarThreshold} W)`,
+      };
+    }
+
+    if (gridPower > consumptionThreshold) {
+      return {
+        mode: BATTERY_MODE.NORMAL_HOLD,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned solar charge: Grid consumption (${gridPower.toFixed(0)} W > ${consumptionThreshold} W)`,
+      };
+    }
+
+    const maintainedMode = lastMode === BATTERY_MODE.NORMAL_SOLAR || lastMode === BATTERY_MODE.NORMAL_HOLD
+      ? lastMode
+      : BATTERY_MODE.NORMAL_HOLD;
+
     return {
-      mode: BATTERY_MODE.CHARGE,
+      mode: maintainedMode,
       intervalIndex: currentIntervalIndex,
-      reason: `Planned charge interval (price: ${priceCache[currentIntervalIndex]?.total?.toFixed(4)} €/kWh)`,
+      reason: `Planned solar charge: neutral zone (${gridPower.toFixed(0)} W), maintaining ${maintainedMode}`,
     };
   }
 

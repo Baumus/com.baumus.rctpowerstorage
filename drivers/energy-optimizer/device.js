@@ -1,7 +1,7 @@
 'use strict';
 
 const RCTDevice = require('../../lib/rct-device');
-const { computeHeuristicStrategy, optimizeStrategyWithLp } = require('./optimizer-core');
+const { optimizeStrategyWithLp } = require('./optimizer-core');
 const { decideBatteryMode, BATTERY_MODE } = require('./strategy-execution-core');
 const {
   calculateBatteryEnergyCost,
@@ -16,6 +16,23 @@ const {
   filterCurrentAndFutureIntervals,
   enrichPriceData,
 } = require('./time-scheduling-core');
+const {
+  INTERVAL_MINUTES,
+  INTERVAL_HOURS,
+  DEFAULT_DAILY_FETCH_HOUR,
+  DEFAULT_BATTERY_CAPACITY_KWH,
+  DEFAULT_CHARGE_POWER_KW,
+  DEFAULT_TARGET_SOC,
+  DEFAULT_MIN_SOC_THRESHOLD,
+  DEFAULT_EFFICIENCY_LOSS_PERCENT,
+  DEFAULT_EXPENSIVE_PRICE_FACTOR,
+  DEFAULT_MIN_PROFIT_CENT_PER_KWH,
+  DEFAULT_FORECAST_DAYS,
+  GRID_SOLAR_THRESHOLD_W,
+  GRID_CONSUMPTION_THRESHOLD_W,
+  MAX_BATTERY_LOG_ENTRIES,
+  PRICE_TIMEZONE,
+} = require('./constants');
 
 // Try to load LP solver from submodule
 let lpSolver;
@@ -23,27 +40,8 @@ try {
   // eslint-disable-next-line global-require
   lpSolver = require('../../lib/javascript-lp-solver/src/main');
 } catch (error) {
-  // LP solver not available, will fall back to heuristic
+  // LP solver not available
 }
-
-// Constants
-const INTERVAL_MINUTES = 15;
-const INTERVAL_HOURS = INTERVAL_MINUTES / 60;
-const DEFAULT_DAILY_FETCH_HOUR = 15;
-const DEFAULT_BATTERY_CAPACITY_KWH = 9.9;
-const DEFAULT_CHARGE_POWER_KW = 6.0;
-const DEFAULT_TARGET_SOC = 85; // %
-const DEFAULT_EFFICIENCY_LOSS_PERCENT = 10; // %
-const DEFAULT_EXPENSIVE_PRICE_FACTOR = 1.05;
-const DEFAULT_MIN_PROFIT_CENT_PER_KWH = 6;
-const DEFAULT_FORECAST_DAYS = 7;
-const DEFAULT_MIN_SOC_THRESHOLD = 7;
-const GRID_SOLAR_THRESHOLD_W = -50;
-const GRID_CONSUMPTION_THRESHOLD_W = 50;
-const MAX_BATTERY_LOG_DAYS = 7;
-const INTERVALS_PER_DAY = 96;
-const MAX_BATTERY_LOG_ENTRIES = MAX_BATTERY_LOG_DAYS * INTERVALS_PER_DAY;
-const PRICE_TIMEZONE = 'Europe/Berlin';
 
 class EnergyOptimizerDevice extends RCTDevice {
 
@@ -865,7 +863,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
     this.log(`Average price: ${avgPrice.toFixed(4)} €/kWh`);
 
-    // Try LP-based optimization first
+    // LP-only optimization
     const lpResult = optimizeStrategyWithLp(
       indexedData,
       {
@@ -893,15 +891,18 @@ class EnergyOptimizerDevice extends RCTDevice {
     if (lpResult) {
       const {
         chargeIntervals,
+        chargeDisplayEntries,
         dischargeIntervals,
         totalChargeKWh,
         totalDischargeKWh,
         savings,
         economics,
+        plannedCharging,
       } = lpResult;
 
       this.currentStrategy = {
         chargeIntervals,
+        chargeDisplayEntries,
         dischargeIntervals,
         expensiveIntervals: dischargeIntervals,
         avgPrice,
@@ -909,6 +910,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         forecastedDemand: totalDischargeKWh,
         savings,
         economics,
+        plannedCharging,
         batteryStatus: {
           currentSoc,
           targetSoc: maxTargetSoc,
@@ -955,72 +957,20 @@ class EnergyOptimizerDevice extends RCTDevice {
       return;
     }
 
-    // Fallback: heuristic optimization if LP fails or solver unavailable
-    this.log('Using heuristic optimization (LP not available or failed)');
-
-    // Prepare parameters for the pure optimization function
-    const params = {
-      batteryCapacity,
-      currentSoc,
-      targetSoc: maxTargetSoc,
-      chargePowerKW,
-      intervalHours: INTERVAL_HOURS,
-      efficiencyLoss: BATTERY_EFFICIENCY_LOSS,
-      expensivePriceFactor: this.normalizedExpensivePriceFactor,
-      minProfitEurPerKWh,
-      minEnergyKWh,
-      batteryCostEurPerKWh: batteryCostInfo?.avgPrice,
-    };
-
-    // Build history object for forecasting
-    const history = {
-      productionHistory: this.productionHistory || {},
-      consumptionHistory: this.consumptionHistory || {},
-      batteryHistory: this.batteryHistory || {},
-    };
-
-    // Call the pure optimization function
-    const strategy = computeHeuristicStrategy(indexedData, params, history, { logger: this });
-
-    // Extract results from strategy
-    const {
-      chargeIntervals: selectedChargeIntervals,
-      dischargeIntervals: selectedDischargeIntervals,
-      expensiveIntervals,
-      avgPrice: strategyAvgPrice,
-      neededKWh: totalChargeKWh,
-      forecastedDemand: totalDischargeKWh,
-      savings: totalSavings,
-    } = strategy;
-
-    this.log('\n=== OPTIMIZATION RESULT ===');
-    this.log(`Selected ${selectedChargeIntervals.length} charge intervals`);
-    this.log(`Selected ${selectedDischargeIntervals.length} discharge intervals`);
-    this.log(`Total charge: ${totalChargeKWh.toFixed(2)} kWh`);
-    this.log(`Total estimated savings: €${totalSavings.toFixed(2)}`);
-
-    // Debug: Log all charge interval times
-    if (selectedChargeIntervals.length > 0) {
-      this.log('\n=== CHARGE INTERVAL TIMES ===');
-      selectedChargeIntervals.slice(0, 5).forEach((interval, idx) => {
-        const time = new Date(interval.startsAt);
-        this.log(`  [${idx}] ${time.toLocaleString()} (index: ${interval.index}, price: ${interval.total.toFixed(4)} €/kWh)`);
-      });
-      if (selectedChargeIntervals.length > 5) {
-        this.log(`  ... and ${selectedChargeIntervals.length - 5} more intervals`);
-      }
-      this.log('===========================\n');
-    }
+    // LP-only mode: if LP fails/unavailable, do not fall back to heuristic.
+    this.log('LP optimization unavailable/failed; using no-op strategy.');
 
     this.currentStrategy = {
-      chargeIntervals: selectedChargeIntervals,
-      dischargeIntervals: selectedDischargeIntervals,
-      expensiveIntervals,
-      avgPrice: strategyAvgPrice,
-      neededKWh: totalChargeKWh,
-      forecastedDemand: totalDischargeKWh,
-      savings: totalSavings,
-      economics: strategy.economics,
+      chargeIntervals: [],
+      chargeDisplayEntries: [],
+      dischargeIntervals: [],
+      expensiveIntervals: [],
+      avgPrice,
+      neededKWh: 0,
+      forecastedDemand: 0,
+      savings: 0,
+      economics: null,
+      plannedCharging: null,
       batteryStatus: {
         currentSoc,
         targetSoc: maxTargetSoc,
@@ -1031,48 +981,9 @@ class EnergyOptimizerDevice extends RCTDevice {
       },
     };
 
-    // Store current SoC for comparison in next check
     this.lastOptimizationSoC = currentSoc;
-
-    const nextChargeInterval = selectedChargeIntervals
-      .filter((ci) => new Date(ci.startsAt) >= now)
-      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
-
-    if (nextChargeInterval) {
-      const firstCharge = new Date(nextChargeInterval.startsAt);
-
-      const formattedTime = firstCharge.toLocaleString(this.homey.i18n.getLanguage(), {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Berlin',
-      });
-
-      this.log('\n🔍 DEBUG: Setting next_charge_start capability');
-      this.log(`   Raw timestamp: ${nextChargeInterval.startsAt}`);
-      this.log(`   Parsed Date: ${firstCharge.toISOString()}`);
-      this.log(`   Formatted for capability: ${formattedTime}`);
-      this.log(`   Interval index: ${nextChargeInterval.index}`);
-
-      await this.setCapabilityValueIfChanged('next_charge_start', formattedTime);
-      await this.setCapabilityValueIfChanged('estimated_savings', Math.max(0, Math.round(totalSavings * 100) / 100), { tolerance: 0.01 });
-
-      const avgChargePrice = selectedChargeIntervals.reduce((sum, s) => sum + s.total, 0) / selectedChargeIntervals.length;
-      const effectiveAvgPrice = avgChargePrice * (1 + BATTERY_EFFICIENCY_LOSS);
-
-      this.log('\n=== STRATEGY SUMMARY ===');
-      this.log(`Charge intervals: ${selectedChargeIntervals.length}`);
-      this.log(`First charge: ${firstCharge.toLocaleString()}`);
-      this.log(`Avg charge price: ${avgChargePrice.toFixed(4)} €/kWh (effective: ${effectiveAvgPrice.toFixed(4)} €/kWh)`);
-      this.log(`Estimated savings: €${totalSavings.toFixed(2)}`);
-      this.log('======================\n');
-    } else {
-      this.log('No profitable charging opportunities found');
-      await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_cheap_slots'));
-      await this.setCapabilityValueIfChanged('estimated_savings', 0);
-    }
+    await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_cheap_slots'));
+    await this.setCapabilityValueIfChanged('estimated_savings', 0);
   }
 
   /**

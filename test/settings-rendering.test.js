@@ -228,21 +228,40 @@ describe('Settings Page Data Rendering', () => {
 
   describe('Timeline Data Processing', () => {
     it('should format charge intervals correctly', () => {
-      const chargeIntervals = [
-        { startsAt: '2024-01-15T22:00:00Z', total: 0.15 },
-        { startsAt: '2024-01-15T22:15:00Z', total: 0.16 },
-        { startsAt: '2024-01-15T22:30:00Z', total: 0.14 },
+      // Backend provides explicit per-entry source + €/kWh and a precomputed summary.
+      const chargeDisplayEntries = [
+        {
+          startsAt: '2024-01-15T22:00:00Z',
+          plannedSymbol: '⚡',
+          plannedEnergySource: 'grid',
+          plannedEnergyKWh: 0.40,
+          plannedPriceEurPerKWh: 0.15,
+          plannedCostEur: 0.06,
+        },
+        {
+          startsAt: '2024-01-15T22:15:00Z',
+          plannedSymbol: '☀',
+          plannedEnergySource: 'solar',
+          plannedEnergyKWh: 0.20,
+          plannedPriceEurPerKWh: 0.07,
+          plannedCostEur: 0.014,
+        },
       ];
 
-      const energyPerInterval = 1.5; // kWh per 15-min interval
+      const plannedCharging = {
+        totalEnergyKWh: 0.60,
+        totalCostEur: 0.074,
+        avgPriceEurPerKWh: 0.12333333333333334,
+      };
 
-      const totalChargeEnergy = chargeIntervals.length * energyPerInterval;
-      const avgChargePrice = chargeIntervals.reduce((sum, i) => sum + i.total, 0) / chargeIntervals.length;
-      const totalChargeCost = totalChargeEnergy * avgChargePrice;
+      expect(chargeDisplayEntries[0].plannedSymbol).toBe('⚡');
+      expect(chargeDisplayEntries[0].plannedPriceEurPerKWh).toBeCloseTo(0.15, 6);
+      expect(chargeDisplayEntries[1].plannedSymbol).toBe('☀');
+      expect(chargeDisplayEntries[1].plannedPriceEurPerKWh).toBeCloseTo(0.07, 6);
 
-      expect(totalChargeEnergy).toBeCloseTo(4.5, 1);
-      expect(avgChargePrice).toBeCloseTo(0.15, 2);
-      expect(totalChargeCost).toBeCloseTo(0.675, 2);
+      expect(plannedCharging.totalEnergyKWh).toBeCloseTo(0.60, 6);
+      expect(plannedCharging.totalCostEur).toBeCloseTo(0.074, 6);
+      expect(plannedCharging.avgPriceEurPerKWh).toBeCloseTo(0.1233333333, 7);
     });
 
     it('should format time and date correctly', () => {
@@ -699,6 +718,16 @@ describe('Settings Page Data Rendering', () => {
           { startsAt: '2024-01-15T22:15:00Z', total: 0.16 },
           { startsAt: '2024-01-15T22:30:00Z', total: 0.14 },
         ],
+        chargeDisplayEntries: [
+          { startsAt: '2024-01-15T22:00:00Z', plannedSymbol: '⚡', plannedEnergyKWh: 0.40, plannedPriceEurPerKWh: 0.15, plannedCostEur: 0.06 },
+          { startsAt: '2024-01-15T22:15:00Z', plannedSymbol: '⚡', plannedEnergyKWh: 0.20, plannedPriceEurPerKWh: 0.16, plannedCostEur: 0.032 },
+          { startsAt: '2024-01-15T22:30:00Z', plannedSymbol: '☀', plannedEnergyKWh: 0.10, plannedPriceEurPerKWh: 0.07, plannedCostEur: 0.007 },
+        ],
+        plannedCharging: {
+          totalEnergyKWh: 0.70,
+          totalCostEur: 0.099,
+          avgPriceEurPerKWh: 0.14142857142857143,
+        },
         expensiveIntervals: [
           { startsAt: '2024-01-16T18:00:00Z', total: 0.30 },
           { startsAt: '2024-01-16T18:15:00Z', total: 0.32 },
@@ -711,21 +740,20 @@ describe('Settings Page Data Rendering', () => {
         },
       };
 
-      // Calculate statistics
-      const energyPerInterval = 1.5;
-      const totalChargeEnergy = strategy.chargeIntervals.length * energyPerInterval;
-      const avgChargePrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
-      const totalChargeCost = totalChargeEnergy * avgChargePrice;
-      
+      // UI should rely on backend-provided plannedCharging for charge-side numbers
+      const totalChargeEnergy = strategy.plannedCharging.totalEnergyKWh;
+      const avgChargePrice = strategy.plannedCharging.avgPriceEurPerKWh;
+      const totalChargeCost = strategy.plannedCharging.totalCostEur;
+
       const avgExpensivePrice = strategy.expensiveIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.expensiveIntervals.length;
       const baselineCost = strategy.economics.baselineCost;
       const optimizedCost = strategy.economics.optimizedCost;
       const savings = strategy.economics.savings;
 
       // Verify calculations
-      expect(totalChargeEnergy).toBeCloseTo(4.5, 1);
-      expect(avgChargePrice).toBeCloseTo(0.15, 2);
-      expect(totalChargeCost).toBeCloseTo(0.675, 2);
+      expect(totalChargeEnergy).toBeCloseTo(0.70, 6);
+      expect(avgChargePrice).toBeCloseTo(0.1414285714, 7);
+      expect(totalChargeCost).toBeCloseTo(0.099, 6);
       expect(avgExpensivePrice).toBeCloseTo(0.31, 2);
       expect(baselineCost).toBeCloseTo(1.55, 2);
       expect(optimizedCost).toBeCloseTo(0.75, 2);

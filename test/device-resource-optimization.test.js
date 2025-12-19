@@ -276,22 +276,12 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       lpSpy.mockRestore();
     });
 
-    it('should pass combined battery cost basis + min SoC to heuristic optimizer when LP is skipped', async () => {
+    it('should use no-op strategy when LP returns null (LP-only mode)', async () => {
       jest.resetModules();
       jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });
 
       const optimizerCore = require('../drivers/energy-optimizer/optimizer-core');
       const lpSpy = jest.spyOn(optimizerCore, 'optimizeStrategyWithLp').mockReturnValue(null);
-      const heuristicSpy = jest.spyOn(optimizerCore, 'computeHeuristicStrategy').mockReturnValue({
-        chargeIntervals: [],
-        dischargeIntervals: [],
-        expensiveIntervals: [],
-        avgPrice: 0.25,
-        neededKWh: 0,
-        forecastedDemand: 0,
-        savings: 0,
-        expensiveThreshold: 0,
-      });
 
       const EnergyOptimizerDeviceFresh = require('../drivers/energy-optimizer/device');
       const optimizer = new EnergyOptimizerDeviceFresh();
@@ -342,14 +332,12 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       await optimizer.calculateOptimalStrategy({ force: true });
 
       expect(lpSpy).toHaveBeenCalled();
-      expect(heuristicSpy).toHaveBeenCalled();
-      const passedParams = heuristicSpy.mock.calls[0][1];
-      expect(passedParams.batteryCostEurPerKWh).toBeCloseTo(0.123, 6);
-      expect(passedParams.minEnergyKWh).toBeCloseTo(2.0, 6);
-      expect(passedParams.minProfitEurPerKWh).toBeCloseTo(0.08, 6);
+      expect(optimizer.currentStrategy).toBeDefined();
+      expect(optimizer.currentStrategy.chargeIntervals).toEqual([]);
+      expect(optimizer.currentStrategy.dischargeIntervals).toEqual([]);
+      expect(optimizer.currentStrategy.savings).toBe(0);
 
       lpSpy.mockRestore();
-      heuristicSpy.mockRestore();
     });
 
     it('should keep next_charge_start in the future during execution', async () => {

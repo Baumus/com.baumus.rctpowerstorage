@@ -7,7 +7,15 @@
  * Run: node tools/simulate-optimizer.js
  */
 
-const { computeHeuristicStrategy } = require('../drivers/energy-optimizer/optimizer-core');
+const { optimizeStrategyWithLp } = require('../drivers/energy-optimizer/optimizer-core');
+
+let lpSolver;
+try {
+  // eslint-disable-next-line global-require
+  lpSolver = require('../lib/javascript-lp-solver/src/main');
+} catch (e) {
+  lpSolver = null;
+}
 
 // Example 1: Clear day/night pattern
 function simulateDayNightPattern() {
@@ -102,16 +110,24 @@ function simulateDayNightPattern() {
     debug: () => {}, // Suppress debug logs
   };
 
-  const strategy = computeHeuristicStrategy(indexedData, params, history, { logger });
+  if (!lpSolver) {
+    console.log('LP solver not available (missing lib/javascript-lp-solver).');
+    return;
+  }
+
+  const strategy = optimizeStrategyWithLp(indexedData, params, history, { logger, lpSolver });
+
+  if (!strategy) {
+    console.log('LP returned no solution for this scenario.');
+    return;
+  }
 
   console.log('\n--- Results ---');
   console.log(`Charge intervals: ${strategy.chargeIntervals.length}`);
   console.log(`Discharge intervals: ${strategy.dischargeIntervals.length}`);
-  console.log(`Total charge needed: ${strategy.neededKWh.toFixed(2)} kWh`);
-  console.log(`Total discharge forecast: ${strategy.forecastedDemand.toFixed(2)} kWh`);
+  console.log(`Total charge planned: ${strategy.totalChargeKWh.toFixed(2)} kWh`);
+  console.log(`Total discharge planned: ${strategy.totalDischargeKWh.toFixed(2)} kWh`);
   console.log(`Estimated savings: €${strategy.savings.toFixed(2)}`);
-  console.log(`Average price: ${strategy.avgPrice.toFixed(4)} €/kWh`);
-  console.log(`Expensive threshold: ${strategy.expensiveThreshold.toFixed(4)} €/kWh`);
 
   if (strategy.chargeIntervals.length > 0) {
     console.log('\nFirst 5 charge slots:');
@@ -170,7 +186,17 @@ function simulateFlatPrices() {
     debug: () => {},
   };
 
-  const strategy = computeHeuristicStrategy(indexedData, params, history, { logger });
+  if (!lpSolver) {
+    console.log('LP solver not available (missing lib/javascript-lp-solver).');
+    return;
+  }
+
+  const strategy = optimizeStrategyWithLp(indexedData, params, history, { logger, lpSolver });
+
+  if (!strategy) {
+    console.log('LP returned no solution for this scenario.');
+    return;
+  }
 
   console.log('\n--- Results ---');
   console.log(`Charge intervals: ${strategy.chargeIntervals.length}`);
@@ -220,7 +246,17 @@ function simulateFullBattery() {
     debug: () => {},
   };
 
-  const strategy = computeHeuristicStrategy(indexedData, params, history, { logger });
+  if (!lpSolver) {
+    console.log('LP solver not available (missing lib/javascript-lp-solver).');
+    return;
+  }
+
+  const strategy = optimizeStrategyWithLp(indexedData, params, history, { logger, lpSolver });
+
+  if (!strategy) {
+    console.log('LP returned no solution for this scenario.');
+    return;
+  }
 
   console.log('\n--- Results ---');
   console.log(`Charge intervals: ${strategy.chargeIntervals.length}`);
