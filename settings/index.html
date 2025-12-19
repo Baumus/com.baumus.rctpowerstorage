@@ -948,14 +948,12 @@
                     html += `<div class="no-data">... and ${dischargeIntervals.length - 12} more intervals</div>`;
                 }
                 
-                // Add discharge summary with savings calculation
+                // Add discharge summary using backend-provided economics (UI stays dumb)
                 const forecastedDemand = strategy.forecastedDemand || 0;
                 const avgExpensivePrice = dischargeIntervals.reduce((sum, i) => sum + i.total, 0) / dischargeIntervals.length;
-                const batteryUsageCost = forecastedDemand * (strategy.chargeIntervals && strategy.chargeIntervals.length > 0
-                    ? strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length 
-                    : avgExpensivePrice);
-                const gridUsageCost = forecastedDemand * avgExpensivePrice;
-                const savings = gridUsageCost - batteryUsageCost;
+                const baselineCost = strategy?.economics?.baselineCost;
+                const optimizedCost = strategy?.economics?.optimizedCost;
+                const savings = strategy?.economics?.savings ?? strategy?.savings;
                 
                 html += `
                     <div class="status-item" style="margin-top: 12px;">
@@ -964,15 +962,15 @@
                     </div>
                     <div class="status-item">
                         <span class="status-label">Without Battery:</span>
-                        <span class="status-value">€${gridUsageCost.toFixed(2)}</span>
+                        <span class="status-value">€${(typeof baselineCost === 'number' ? baselineCost : 0).toFixed(2)}</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">With Battery:</span>
-                        <span class="status-value">€${batteryUsageCost.toFixed(2)}</span>
+                        <span class="status-value">€${(typeof optimizedCost === 'number' ? optimizedCost : 0).toFixed(2)}</span>
                     </div>
                     <div class="status-item active">
                         <span class="status-label">Estimated Savings:</span>
-                        <span class="status-value">€${Math.max(0, savings).toFixed(2)}</span>
+                        <span class="status-value">€${Math.max(0, typeof savings === 'number' ? savings : 0).toFixed(2)}</span>
                     </div>
                 `;
                 

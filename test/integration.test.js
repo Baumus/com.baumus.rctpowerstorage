@@ -10,7 +10,6 @@
 
 const {
   computeHeuristicStrategy,
-  forecastEnergyDemand,
 } = require('../drivers/energy-optimizer/optimizer-core');
 
 const {
@@ -61,22 +60,23 @@ describe('Integration Tests - Light', () => {
       expect(filtered.length).toBeGreaterThan(0);
       expect(filtered.length).toBeLessThanOrEqual(96);
 
-      // 4. Forecast energy demand
-      const history = [5, 6, 4, 5, 7, 6, 5]; // kWh per day
-      const forecast = forecastEnergyDemand(history);
-      expect(forecast).toBeGreaterThan(0);
-
-      // 5. Run optimization
+      // 4. Run optimization
       const params = {
         batteryCapacity: 10,
-        maxChargePower: 3.3,
-        maxDischargePower: 3.3,
-        batteryEfficiency: 0.95,
-        minSoC: 0.10,
-        maxSoC: 0.95,
-        intervalMinutes: 15,
-        solarForecast: Array(96).fill(0), // No solar for simplicity
-        demandForecast: forecast,
+        currentSoc: 0.2,
+        targetSoc: 0.8,
+        chargePowerKW: 3.3,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        expensivePriceFactor: 1.05,
+        minProfitEurPerKWh: 0.05,
+      };
+
+      const history = {
+        // Use defaults in forecastHouseSignalsPerInterval
+        productionHistory: {},
+        consumptionHistory: {},
+        batteryHistory: {},
       };
 
       const strategy = computeHeuristicStrategy(filtered, params, history);
@@ -95,14 +95,7 @@ describe('Integration Tests - Light', () => {
         const currentInterval = findCurrentIntervalIndex(now, filtered, 15);
         expect(currentInterval).toBeGreaterThanOrEqual(0);
 
-        const decision = decideBatteryMode(
-          strategy,
-          currentInterval,
-          0.50, // 50% SoC
-          params,
-          0, // No solar
-          2.0, // 2kW demand
-        );
+        const decision = decideBatteryMode(strategy, currentInterval, 0.50, params, 0, 2.0);
 
         expect(decision).toBeDefined();
         expect(decision.mode).toMatch(/^(CHARGE|DISCHARGE|IDLE|NORMAL_SOLAR|NORMAL_HOLD)$/);

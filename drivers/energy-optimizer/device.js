@@ -400,9 +400,9 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     // Initialize data structures
     this.productionHistory = this.getStoreValue('production_history') || {};
+    // Signed net grid power history (+import, -export)
     this.consumptionHistory = this.getStoreValue('consumption_history') || {};
     this.batteryHistory = this.getStoreValue('battery_history') || {};
-    this.gridHistory = this.getStoreValue('grid_history') || {};
     this.batteryChargeLog = this.getStoreValue('battery_charge_log') || [];
     this.priceCache = [];
     this.currentStrategy = null;
@@ -881,7 +881,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       },
       {
         productionHistory: this.productionHistory || {},
-        consumptionHistory: this.gridHistory || {},
+        consumptionHistory: this.consumptionHistory || {},
         batteryHistory: this.batteryHistory || {},
       },
       {
@@ -897,6 +897,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         totalChargeKWh,
         totalDischargeKWh,
         savings,
+        economics,
       } = lpResult;
 
       this.currentStrategy = {
@@ -906,6 +907,8 @@ class EnergyOptimizerDevice extends RCTDevice {
         avgPrice,
         neededKWh: totalChargeKWh,
         forecastedDemand: totalDischargeKWh,
+        savings,
+        economics,
         batteryStatus: {
           currentSoc,
           targetSoc: maxTargetSoc,
@@ -972,7 +975,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Build history object for forecasting
     const history = {
       productionHistory: this.productionHistory || {},
-      consumptionHistory: this.gridHistory || {},
+      consumptionHistory: this.consumptionHistory || {},
       batteryHistory: this.batteryHistory || {},
     };
 
@@ -1016,6 +1019,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       avgPrice: strategyAvgPrice,
       neededKWh: totalChargeKWh,
       forecastedDemand: totalDischargeKWh,
+      savings: totalSavings,
+      economics: strategy.economics,
       batteryStatus: {
         currentSoc,
         targetSoc: maxTargetSoc,
@@ -1449,7 +1454,8 @@ class EnergyOptimizerDevice extends RCTDevice {
               this.consumptionHistory[intervalIndex] = [];
             }
 
-            this.consumptionHistory[intervalIndex].push(Math.abs(gridPower));
+            // Keep sign: +import, -export
+            this.consumptionHistory[intervalIndex].push(gridPower);
 
             // Keep only last N days
             if (this.consumptionHistory[intervalIndex].length > forecastDays) {
@@ -1513,7 +1519,6 @@ class EnergyOptimizerDevice extends RCTDevice {
     const historyObjects = [
       { name: 'productionHistory', obj: this.productionHistory },
       { name: 'consumptionHistory', obj: this.consumptionHistory },
-      { name: 'gridHistory', obj: this.gridHistory },
       { name: 'batteryHistory', obj: this.batteryHistory },
     ];
 
@@ -1549,7 +1554,6 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       this.queueStoreValue('production_history', this.productionHistory);
       this.queueStoreValue('consumption_history', this.consumptionHistory);
-      this.queueStoreValue('grid_history', this.gridHistory);
       this.queueStoreValue('battery_history', this.batteryHistory);
       this.queueStoreValue('battery_charge_log', this.batteryChargeLog);
       await this.flushStoreWrites();

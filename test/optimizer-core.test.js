@@ -1,4 +1,4 @@
-const { computeHeuristicStrategy, forecastEnergyDemand, getPercentile } = require('../drivers/energy-optimizer/optimizer-core');
+const { computeHeuristicStrategy, forecastHouseSignalsPerInterval, getPercentile } = require('../drivers/energy-optimizer/optimizer-core');
 
 describe('Energy Optimizer Core Logic', () => {
   describe('getPercentile', () => {
@@ -23,13 +23,16 @@ describe('Energy Optimizer Core Logic', () => {
     });
   });
 
-  describe('forecastEnergyDemand', () => {
-    test('returns 0 for empty intervals', () => {
-      const demand = forecastEnergyDemand([], {}, 0.25);
-      expect(demand).toBe(0);
+  describe('forecastHouseSignalsPerInterval', () => {
+    test('returns empty arrays for empty intervals', () => {
+      const signals = forecastHouseSignalsPerInterval([], {}, 0.25);
+      expect(signals.houseLoadKWh).toEqual([]);
+      expect(signals.solarKWh).toEqual([]);
+      expect(signals.importDemandKWh).toEqual([]);
+      expect(signals.solarSurplusKWh).toEqual([]);
     });
 
-    test('uses default 3kW when no history available', () => {
+    test('uses default 3kW load when no history available', () => {
       const intervals = [
         { intervalOfDay: 0 },
         { intervalOfDay: 1 },
@@ -40,26 +43,35 @@ describe('Energy Optimizer Core Logic', () => {
         batteryHistory: {},
       };
 
-      const demand = forecastEnergyDemand(intervals, history, 0.25);
+      const signals = forecastHouseSignalsPerInterval(intervals, history, 0.25);
       // 2 intervals × 3kW × 0.25h = 1.5 kWh
-      expect(demand).toBeCloseTo(1.5, 1);
+      expect(signals.houseLoadKWh.reduce((a, b) => a + b, 0)).toBeCloseTo(1.5, 1);
+      // No solar => all load must be imported
+      expect(signals.importDemandKWh.reduce((a, b) => a + b, 0)).toBeCloseTo(1.5, 1);
+      expect(signals.solarSurplusKWh.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 6);
     });
 
-    test('uses historical data when available', () => {
+    test('reconstructs house load from grid+solar-battery power balance', () => {
       const intervals = [
         { intervalOfDay: 10 },
       ];
       const history = {
-        consumptionHistory: {
-          10: [4000, 5000, 6000], // Average 5000W = 5kW
-        },
-        productionHistory: {},
-        batteryHistory: {},
+        // net grid import 300W
+        consumptionHistory: { 10: [300, 300, 300] },
+        // solar production 200W
+        productionHistory: { 10: [200, 200, 200] },
+        // battery discharging -100W
+        batteryHistory: { 10: [-100, -100, -100] },
       };
 
-      const demand = forecastEnergyDemand(intervals, history, 0.25);
-      // 1 interval × 5kW × 0.25h = 1.25 kWh
-      expect(demand).toBeCloseTo(1.25, 1);
+      const signals = forecastHouseSignalsPerInterval(intervals, history, 0.25);
+      // loadW = 300 + 200 - (-100) = 600W => 0.15kWh
+      expect(signals.houseLoadKWh[0]).toBeCloseTo(0.15, 6);
+      // solarKWh = 200W * 0.25h = 0.05kWh
+      expect(signals.solarKWh[0]).toBeCloseTo(0.05, 6);
+      // import = load - solar = 0.10kWh
+      expect(signals.importDemandKWh[0]).toBeCloseTo(0.10, 6);
+      expect(signals.solarSurplusKWh[0]).toBeCloseTo(0, 6);
     });
   });
 
@@ -361,6 +373,51 @@ describe('Energy Optimizer Core Logic', () => {
       expect(strategy.dischargeIntervals.length).toBeGreaterThan(0);
       expect(strategy.dischargeIntervals[0].index).toBe(1);
       expect(strategy.dischargeIntervals[0].demandKWh).toBeCloseTo(0.8, 1);
+    });
+
+    test('treats PV surplus (PV > house load) as a solar charging source with feed-in opportunity cost', () => {
+      const indexedData = [
+        // Solar surplus interval (net export)
+        { index: 0, startsAt: '2025-01-01T12:00:00Z', total: 0.10, intervalOfDay: 48 },
+        // Expensive import interval
+        { index: 1, startsAt: '2025-01-01T18:00:00Z', total: 0.40, intervalOfDay: 72 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.0,
+        targetSoc: 0.8,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        expensivePriceFactor: 1.0,
+        minProfitEurPerKWh: 0.0,
+      };
+
+      const history = {
+        productionHistory: {
+          // 4kW PV => 1.0kWh over 15min
+          48: [4000, 4000, 4000],
+        },
+        batteryHistory: {},
+        consumptionHistory: {
+          // -4kW net export with 4kW PV => 0W load and 1.0kWh surplus
+          48: [-4000, -4000, -4000],
+          // +4kW import => 1.0kWh demand
+          72: [4000, 4000, 4000],
+        },
+      };
+
+      const strategy = computeHeuristicStrategy(indexedData, params, history);
+
+      // Should identify a discharge opportunity
+      expect(strategy.dischargeIntervals.length).toBeGreaterThan(0);
+      // Solar surplus should be used as a charging source (interval 0)
+      expect(strategy.chargeIntervals.map((i) => i.index)).toContain(0);
+      // Savings should be positive (charging from solar surplus has opportunity cost of 0.07 €/kWh)
+      expect(strategy.savings).toBeGreaterThan(0);
+      expect(strategy.economics).toBeDefined();
+      expect(strategy.economics.totalSolarChargeKWh).toBeGreaterThan(0);
     });
   });
 

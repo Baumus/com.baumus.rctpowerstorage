@@ -1,6 +1,6 @@
 'use strict';
 
-const { optimizeStrategyWithLp, forecastEnergyDemand } = require('../drivers/energy-optimizer/optimizer-core');
+const { optimizeStrategyWithLp, forecastHouseSignalsPerInterval } = require('../drivers/energy-optimizer/optimizer-core');
 
 // Mock LP solver
 const mockLpSolver = {
@@ -193,10 +193,14 @@ describe('LP Optimizer Logic', () => {
       mockLpSolver.Solve.mockReturnValue({
         totalCost: -0.5, // Variable cost (negative means savings)
         feasible: true,
-        c_0: 1.5, // Charge 1.5 kWh at interval 0
-        d_1: 1.3, // Discharge 1.3 kWh at interval 1
-        s_0: 3.5, // SoC at interval 0
-        s_1: 3.4, // SoC at interval 1
+        c_0: 1.5,  // grid charge 1.5 kWh
+        sc_0: 0.0, // no solar charge
+        d0_1: 1.3, // discharge 1.3 kWh from existing energy
+        d1_1: 0.0,
+        s_0: 3.5,
+        s_1: 3.4,
+        e_0: 2.0,
+        e_1: 1.6,
       });
 
       const indexedData = [
@@ -237,12 +241,16 @@ describe('LP Optimizer Logic', () => {
         feasible: true,
         c_0: 0.005, // Below threshold - should be filtered
         c_1: 1.5,   // Above threshold - should be included
-        d_2: 0.008, // Below threshold - should be filtered
-        d_3: 1.2,   // Above threshold - should be included
+        d0_2: 0.008, // Below threshold - should be filtered
+        d0_3: 1.2,   // Above threshold - should be included
         s_0: 2.0,
         s_1: 3.5,
         s_2: 3.4,
         s_3: 2.2,
+        e_0: 2.0,
+        e_1: 2.0,
+        e_2: 2.0,
+        e_3: 2.0,
       });
 
       const indexedData = [
@@ -325,7 +333,7 @@ describe('LP Optimizer Logic', () => {
       )).toBe(true);
     });
 
-    test('includes battery cost basis in discharge objective coefficient', () => {
+    test('includes battery cost basis in discharge objective coefficient for existing-energy discharge (d0_*)', () => {
       mockLpSolver.Solve.mockReturnValue({ totalCost: 0, feasible: true });
 
       const indexedData = [
@@ -346,10 +354,45 @@ describe('LP Optimizer Logic', () => {
       optimizeStrategyWithLp(indexedData, params, mockHistory, { lpSolver: mockLpSolver });
 
       const model = mockLpSolver.Solve.mock.calls[0][0];
-      // effective cost per delivered kWh = batteryCost/etaDischarge + minProfit
-      // etaDischarge = 0.9 => 0.25/0.9 + 0.03 = 0.307777...
-      // coefficient = effectiveCost - price
-      expect(model.variables.d_0.totalCost).toBeCloseTo((0.25 / 0.9 + 0.03) - 0.20, 6);
+      // d0 coefficient = -price + minProfit + batteryCost/etaDischarge
+      // etaDischarge = 0.9 => 0.25/0.9 = 0.277777...
+      expect(model.variables.d0_0.totalCost).toBeCloseTo((-0.20) + 0.03 + (0.25 / 0.9), 6);
+    });
+
+    test('adds solar surplus constraint (scCap_*) using PV surplus (PV > house load) as available charging energy', () => {
+      mockLpSolver.Solve.mockReturnValue({ totalCost: 0, feasible: true });
+
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T12:00:00Z', total: 0.30, intervalOfDay: 48 },
+      ];
+
+      const history = {
+        productionHistory: {
+          // 4000W PV production => 1.0 kWh over 15min
+          48: [4000, 4000, 4000],
+        },
+        batteryHistory: {},
+        consumptionHistory: {
+          // -4000W net export with 4000W PV implies 0W house load and 4000W surplus
+          48: [-4000, -4000, -4000],
+        },
+      };
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.2,
+        targetSoc: 0.8,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+      };
+
+      optimizeStrategyWithLp(indexedData, params, history, { lpSolver: mockLpSolver });
+
+      const model = mockLpSolver.Solve.mock.calls[0][0];
+      expect(model.constraints.scCap_0).toBeDefined();
+      expect(model.constraints.scCap_0.max).toBeCloseTo(1.0, 6);
+      expect(model.constraints.scCap_0.sc_0).toBe(1);
     });
 
     test('adds min SoC constraint (sMin_*) when minEnergyKWh is provided', () => {
@@ -384,7 +427,7 @@ describe('LP Optimizer Logic', () => {
   });
 
   describe('Error handling edge cases', () => {
-    test('forecastEnergyDemand handles missing history gracefully', () => {
+    test('forecastHouseSignalsPerInterval handles missing history gracefully', () => {
       const intervals = [
         { index: 0, intervalOfDay: 99 }, // Non-existent interval
       ];
@@ -395,13 +438,12 @@ describe('LP Optimizer Logic', () => {
         batteryHistory: {},
       };
 
-      const demand = forecastEnergyDemand(intervals, history, 0.25);
-
-      // Should use default 3 kW when no history
-      expect(demand).toBeCloseTo(0.75, 1); // 3 kW * 0.25 hours
+      const signals = forecastHouseSignalsPerInterval(intervals, history, 0.25);
+      expect(signals.houseLoadKWh[0]).toBeCloseTo(0.75, 6);
+      expect(signals.importDemandKWh[0]).toBeCloseTo(0.75, 6);
     });
 
-    test('forecastEnergyDemand handles malformed history data', () => {
+    test('forecastHouseSignalsPerInterval handles malformed history data', () => {
       const intervals = [
         { index: 0, intervalOfDay: 0 },
       ];
@@ -412,12 +454,13 @@ describe('LP Optimizer Logic', () => {
         batteryHistory: {},
       };
 
-      // Should not throw and use defaults
       expect(() => {
-        forecastEnergyDemand(intervals, history, 0.25);
+        forecastHouseSignalsPerInterval(intervals, history, 0.25);
       }).not.toThrow();
     });
+  });
 
+  describe('optimizeStrategyWithLp additional edge cases', () => {
     test('optimizeStrategyWithLp handles missing intervalOfDay', () => {
       mockLpSolver.Solve.mockReturnValue({
         totalCost: 0,
@@ -439,7 +482,6 @@ describe('LP Optimizer Logic', () => {
 
       const result = optimizeStrategyWithLp(indexedData, params, {}, { lpSolver: mockLpSolver });
 
-      // Should handle gracefully (may use default demand)
       expect(result).not.toBeNull();
     });
 
@@ -468,7 +510,6 @@ describe('LP Optimizer Logic', () => {
       const result = optimizeStrategyWithLp(indexedData, params, {}, { lpSolver: mockLpSolver });
 
       expect(result).not.toBeNull();
-      // With 50% loss, etaCharge = 0.5, so only half the energy is stored
       expect(mockLpSolver.Solve).toHaveBeenCalled();
     });
 
@@ -532,10 +573,9 @@ describe('LP Optimizer Logic', () => {
 
       expect(result).not.toBeNull();
       expect(mockLpSolver.Solve).toHaveBeenCalled();
-      
-      // Check model constraints were created for all intervals
+
       const model = mockLpSolver.Solve.mock.calls[0][0];
-      expect(Object.keys(model.variables).length).toBeGreaterThan(96 * 2); // At least c, d, s for each
+      expect(Object.keys(model.variables).length).toBeGreaterThan(96 * 2);
     });
   });
 });

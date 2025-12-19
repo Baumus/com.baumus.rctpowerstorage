@@ -263,7 +263,7 @@ describe('Settings Page Data Rendering', () => {
       expect(dateStr).toMatch(/^\d{1,2} \w{3}$/); // Format: "15 Jan"
     });
 
-    it('should calculate discharge savings correctly', () => {
+    it('should use backend-provided economics/savings (no UI recomputation)', () => {
       const strategy = {
         forecastedDemand: 5.0, // kWh
         chargeIntervals: [
@@ -274,20 +274,19 @@ describe('Settings Page Data Rendering', () => {
           { total: 0.30 },
           { total: 0.32 },
         ],
+        economics: {
+          baselineCost: 1.55,
+          optimizedCost: 0.775,
+          savings: 0.775,
+        },
       };
 
-      const forecastedDemand = strategy.forecastedDemand;
-      const avgChargePrice = strategy.chargeIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.chargeIntervals.length;
-      const avgExpensivePrice = strategy.expensiveIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.expensiveIntervals.length;
+      const baselineCost = strategy.economics.baselineCost;
+      const optimizedCost = strategy.economics.optimizedCost;
+      const savings = strategy.economics.savings;
 
-      const batteryUsageCost = forecastedDemand * avgChargePrice;
-      const gridUsageCost = forecastedDemand * avgExpensivePrice;
-      const savings = gridUsageCost - batteryUsageCost;
-
-      expect(avgChargePrice).toBeCloseTo(0.155, 3);
-      expect(avgExpensivePrice).toBeCloseTo(0.31, 2);
-      expect(batteryUsageCost).toBeCloseTo(0.775, 2);
-      expect(gridUsageCost).toBeCloseTo(1.55, 2);
+      expect(baselineCost).toBeCloseTo(1.55, 2);
+      expect(optimizedCost).toBeCloseTo(0.775, 2);
       expect(savings).toBeCloseTo(0.775, 2);
     });
 
@@ -705,6 +704,11 @@ describe('Settings Page Data Rendering', () => {
           { startsAt: '2024-01-16T18:15:00Z', total: 0.32 },
         ],
         forecastedDemand: 5.0,
+        economics: {
+          baselineCost: 1.55,
+          optimizedCost: 0.75,
+          savings: 0.80,
+        },
       };
 
       // Calculate statistics
@@ -714,15 +718,17 @@ describe('Settings Page Data Rendering', () => {
       const totalChargeCost = totalChargeEnergy * avgChargePrice;
       
       const avgExpensivePrice = strategy.expensiveIntervals.reduce((sum, i) => sum + i.total, 0) / strategy.expensiveIntervals.length;
-      const batteryUsageCost = strategy.forecastedDemand * avgChargePrice;
-      const gridUsageCost = strategy.forecastedDemand * avgExpensivePrice;
-      const savings = gridUsageCost - batteryUsageCost;
+      const baselineCost = strategy.economics.baselineCost;
+      const optimizedCost = strategy.economics.optimizedCost;
+      const savings = strategy.economics.savings;
 
       // Verify calculations
       expect(totalChargeEnergy).toBeCloseTo(4.5, 1);
       expect(avgChargePrice).toBeCloseTo(0.15, 2);
       expect(totalChargeCost).toBeCloseTo(0.675, 2);
       expect(avgExpensivePrice).toBeCloseTo(0.31, 2);
+      expect(baselineCost).toBeCloseTo(1.55, 2);
+      expect(optimizedCost).toBeCloseTo(0.75, 2);
       expect(savings).toBeCloseTo(0.80, 2);
     });
   });

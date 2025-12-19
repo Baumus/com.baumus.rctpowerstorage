@@ -86,7 +86,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       optimizer.normalizedEfficiencyLoss = 0.1;
       optimizer.normalizedExpensivePriceFactor = 1.2;
       optimizer.productionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
       optimizer.homey = { __: jest.fn((key) => key) };
       optimizer.setCapabilityValueIfChanged = jest.fn();
@@ -133,7 +133,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       optimizer.normalizedEfficiencyLoss = 0.1;
       optimizer.normalizedExpensivePriceFactor = 1.2;
       optimizer.productionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
       optimizer.homey = { __: jest.fn((key) => key) };
       optimizer.setCapabilityValueIfChanged = jest.fn();
@@ -186,7 +186,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       optimizer.normalizedEfficiencyLoss = 0.1;
       optimizer.normalizedExpensivePriceFactor = 1.2;
       optimizer.productionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
       optimizer.homey = { __: jest.fn((key) => key) };
       optimizer.setCapabilityValueIfChanged = jest.fn();
@@ -245,7 +245,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       optimizer.normalizedEfficiencyLoss = 0.1;
       optimizer.normalizedExpensivePriceFactor = 1.2;
       optimizer.productionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
       optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
       optimizer.setCapabilityValueIfChanged = jest.fn();
@@ -323,7 +323,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       optimizer.normalizedEfficiencyLoss = 0.1;
       optimizer.normalizedExpensivePriceFactor = 1.2;
       optimizer.productionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
       optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
       optimizer.setCapabilityValueIfChanged = jest.fn();
@@ -575,7 +575,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
         1: [11, 12, 13],
       };
       optimizer.consumptionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
 
       optimizer.pruneHistories(7);
@@ -594,7 +594,7 @@ describe('EnergyOptimizerDevice resource optimization', () => {
         2: [4, 5],
       };
       optimizer.consumptionHistory = {};
-      optimizer.gridHistory = {};
+      optimizer.consumptionHistory = {};
       optimizer.batteryHistory = {};
 
       optimizer.pruneHistories(7);
@@ -614,7 +614,6 @@ describe('EnergyOptimizerDevice resource optimization', () => {
         3: { not: 'array' },
       };
       optimizer.consumptionHistory = {};
-      optimizer.gridHistory = {};
       optimizer.batteryHistory = {};
 
       optimizer.pruneHistories(7);
@@ -625,19 +624,17 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(optimizer.productionHistory[3]).toBeUndefined();
     });
 
-    it('should prune all history objects (production, consumption, grid, battery)', () => {
+    it('should prune all history objects (production, consumption, battery)', () => {
       const optimizer = new EnergyOptimizerDevice();
 
       optimizer.productionHistory = { 0: [1, 2, 3, 4, 5] };
       optimizer.consumptionHistory = { 0: [6, 7, 8, 9, 10] };
-      optimizer.gridHistory = { 0: [] };
       optimizer.batteryHistory = { 0: 'invalid', 1: [11, 12] };
 
       optimizer.pruneHistories(3);
 
       expect(optimizer.productionHistory[0]).toEqual([3, 4, 5]);
       expect(optimizer.consumptionHistory[0]).toEqual([8, 9, 10]);
-      expect(optimizer.gridHistory[0]).toBeUndefined();
       expect(optimizer.batteryHistory[0]).toBeUndefined();
       expect(optimizer.batteryHistory[1]).toEqual([11, 12]);
     });

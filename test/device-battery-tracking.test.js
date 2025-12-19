@@ -47,7 +47,7 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     optimizer.productionHistory = {};
     optimizer.consumptionHistory = {};
     optimizer.batteryHistory = {};
-    optimizer.gridHistory = {};
+    optimizer.consumptionHistory = {};
     optimizer.batteryChargeLog = [];
 
     optimizer.setStoreValue = jest.fn(async () => {});
