@@ -792,10 +792,11 @@ class EnergyOptimizerDevice extends RCTDevice {
     }
 
     const now = new Date();
-    const availableData = this.priceCache.filter((p) => {
-      const start = new Date(p.startsAt);
-      return start >= now;
-    });
+    const availableData = filterCurrentAndFutureIntervals(
+      this.priceCache,
+      now,
+      INTERVAL_MINUTES,
+    );
 
     if (!availableData.length) {
       this.log('No price data available');
@@ -917,8 +918,12 @@ class EnergyOptimizerDevice extends RCTDevice {
 
       this.lastOptimizationSoC = currentSoc;
 
-      if (chargeIntervals.length > 0) {
-        const firstCharge = new Date(chargeIntervals[0].startsAt);
+      const nextChargeInterval = chargeIntervals
+        .filter((ci) => new Date(ci.startsAt) >= now)
+        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+
+      if (nextChargeInterval) {
+        const firstCharge = new Date(nextChargeInterval.startsAt);
         const formattedTime = firstCharge.toLocaleString(this.homey.i18n.getLanguage(), {
           year: 'numeric',
           month: '2-digit',
@@ -1024,8 +1029,12 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Store current SoC for comparison in next check
     this.lastOptimizationSoC = currentSoc;
 
-    if (selectedChargeIntervals.length > 0) {
-      const firstCharge = new Date(selectedChargeIntervals[0].startsAt);
+    const nextChargeInterval = selectedChargeIntervals
+      .filter((ci) => new Date(ci.startsAt) >= now)
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+
+    if (nextChargeInterval) {
+      const firstCharge = new Date(nextChargeInterval.startsAt);
 
       const formattedTime = firstCharge.toLocaleString(this.homey.i18n.getLanguage(), {
         year: 'numeric',
@@ -1037,10 +1046,10 @@ class EnergyOptimizerDevice extends RCTDevice {
       });
 
       this.log('\n🔍 DEBUG: Setting next_charge_start capability');
-      this.log(`   Raw timestamp: ${selectedChargeIntervals[0].startsAt}`);
+      this.log(`   Raw timestamp: ${nextChargeInterval.startsAt}`);
       this.log(`   Parsed Date: ${firstCharge.toISOString()}`);
       this.log(`   Formatted for capability: ${formattedTime}`);
-      this.log(`   Interval index: ${selectedChargeIntervals[0].index}`);
+      this.log(`   Interval index: ${nextChargeInterval.index}`);
 
       await this.setCapabilityValueIfChanged('next_charge_start', formattedTime);
       await this.setCapabilityValueIfChanged('estimated_savings', Math.max(0, Math.round(totalSavings * 100) / 100), { tolerance: 0.01 });
@@ -1148,6 +1157,31 @@ class EnergyOptimizerDevice extends RCTDevice {
     }
 
     this.log(`Strategy info: ${this.currentStrategy.chargeIntervals?.length || 0} charge intervals, ${this.currentStrategy.dischargeIntervals?.length || 0} discharge intervals`);
+
+    // Keep UI in sync: next upcoming charge slot (not the first historical one)
+    try {
+      const now = new Date();
+      const nextChargeInterval = (this.currentStrategy.chargeIntervals || [])
+        .filter((ci) => ci && ci.startsAt && new Date(ci.startsAt) >= now)
+        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+
+      if (nextChargeInterval) {
+        const nextCharge = new Date(nextChargeInterval.startsAt);
+        const formattedTime = nextCharge.toLocaleString(this.homey.i18n.getLanguage(), {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Berlin',
+        });
+        await this.setCapabilityValueIfChanged('next_charge_start', formattedTime);
+      } else {
+        await this.setCapabilityValueIfChanged('next_charge_start', this.homey.__('status.no_cheap_slots'));
+      }
+    } catch (error) {
+      this.log(`⚠️ Could not update next_charge_start: ${error.message}`);
+    }
 
     // Get grid power for decision making
     const gridPower = await this.collectGridPower();

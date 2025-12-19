@@ -351,6 +351,81 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       lpSpy.mockRestore();
       heuristicSpy.mockRestore();
     });
+
+    it('should keep next_charge_start in the future during execution', async () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.error = jest.fn();
+
+      // 06:11 UTC (Berlin: 07:11 in winter)
+      jest.setSystemTime(new Date('2024-01-15T06:11:00.000Z'));
+
+      optimizer.homey = {
+        __: jest.fn((key) => key),
+        i18n: {
+          getLanguage: jest.fn(() => 'en'),
+        },
+      };
+
+      optimizer.getCapabilityValue = jest.fn((cap) => (cap === 'onoff' ? true : null));
+      optimizer.setCapabilityValueIfChanged = jest.fn().mockResolvedValue(undefined);
+      optimizer.collectGridPower = jest.fn().mockResolvedValue(0);
+
+      // We don't care about actual mode decision here; keep it minimal
+      optimizer.priceCache = [];
+      optimizer.currentStrategy = {
+        chargeIntervals: [
+          { startsAt: '2024-01-15T06:00:00.000Z', index: 0 }, // past (relative to now)
+          { startsAt: '2024-01-15T06:15:00.000Z', index: 1 }, // next upcoming
+        ],
+        dischargeIntervals: [],
+      };
+
+      await optimizer.executeOptimizationStrategy();
+
+      const expected = new Date('2024-01-15T06:15:00.000Z').toLocaleString('en', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Berlin',
+      });
+
+      expect(optimizer.setCapabilityValueIfChanged).toHaveBeenCalledWith('next_charge_start', expected);
+    });
+
+    it('should set next_charge_start to no_cheap_slots when all planned charge intervals are in the past', async () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.error = jest.fn();
+
+      jest.setSystemTime(new Date('2024-01-15T06:11:00.000Z'));
+
+      optimizer.homey = {
+        __: jest.fn((key) => key),
+        i18n: {
+          getLanguage: jest.fn(() => 'en'),
+        },
+      };
+
+      optimizer.getCapabilityValue = jest.fn((cap) => (cap === 'onoff' ? true : null));
+      optimizer.setCapabilityValueIfChanged = jest.fn().mockResolvedValue(undefined);
+      optimizer.collectGridPower = jest.fn().mockResolvedValue(0);
+
+      optimizer.priceCache = [];
+      optimizer.currentStrategy = {
+        chargeIntervals: [
+          { startsAt: '2024-01-15T05:45:00.000Z', index: 0 },
+          { startsAt: '2024-01-15T06:00:00.000Z', index: 1 },
+        ],
+        dischargeIntervals: [],
+      };
+
+      await optimizer.executeOptimizationStrategy();
+
+      expect(optimizer.setCapabilityValueIfChanged).toHaveBeenCalledWith('next_charge_start', 'status.no_cheap_slots');
+    });
   });
 
   describe('Device/driver cache', () => {

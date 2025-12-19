@@ -92,15 +92,28 @@ function decideBatteryMode(params) {
     };
   }
 
+  const currentStartsAt = priceCache[currentIntervalIndex]?.startsAt;
+  const currentStartMs = currentStartsAt ? new Date(currentStartsAt).getTime() : NaN;
+
+  const matchesCurrentInterval = (plannedInterval) => {
+    if (!plannedInterval || typeof plannedInterval !== 'object') return false;
+    if (plannedInterval.startsAt) {
+      const plannedMs = new Date(plannedInterval.startsAt).getTime();
+      return Number.isFinite(currentStartMs) && plannedMs === currentStartMs;
+    }
+    // Backwards compatibility: older strategies/tests only provide index
+    return plannedInterval.index === currentIntervalIndex;
+  };
+
   // Check if current interval is a planned charge slot
   const shouldCharge = strategy.chargeIntervals
     && Array.isArray(strategy.chargeIntervals)
-    && strategy.chargeIntervals.some((s) => s.index === currentIntervalIndex);
+    && strategy.chargeIntervals.some(matchesCurrentInterval);
 
   // Check if current interval is a planned discharge slot
   const shouldDischarge = strategy.dischargeIntervals
     && Array.isArray(strategy.dischargeIntervals)
-    && strategy.dischargeIntervals.some((s) => s.index === currentIntervalIndex);
+    && strategy.dischargeIntervals.some(matchesCurrentInterval);
 
   // Priority 1: Charge interval
   if (shouldCharge) {

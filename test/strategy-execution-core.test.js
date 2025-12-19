@@ -172,6 +172,29 @@ describe('strategy-execution-core', () => {
 
         expect(result.mode).toBe(BATTERY_MODE.CHARGE);
       });
+
+      it('should decide CHARGE when strategy index differs but startsAt matches current interval', () => {
+        const priceCache = createPriceCache();
+        // 03:30 is index 14 (3.5h * 4)
+        const now = new Date('2024-01-15T03:30:05.000Z');
+        const currentIndex = findCurrentIntervalIndex(now, priceCache, 15);
+        expect(currentIndex).toBe(14);
+
+        // Simulate strategy built from a filtered array (index=0) but same startsAt
+        const strategy = {
+          chargeIntervals: [{ index: 0, startsAt: priceCache[currentIndex].startsAt }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.CHARGE);
+        expect(result.intervalIndex).toBe(currentIndex);
+      });
     });
 
     describe('Discharge interval decisions', () => {
