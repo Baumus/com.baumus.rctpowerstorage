@@ -1,6 +1,6 @@
 {
   "id": "com.baumus.rctpowerstorage",
-  "version": "4.3.3",
+  "version": "4.3.4",
   "compatibility": ">=12.4.5",
   "sdk": 3,
   "platforms": [

@@ -145,5 +145,8 @@
   },
   "4.3.3": {
     "en": "fix: UI energy optimizer"
+  },
+  "4.3.4": {
+    "en": "fix: energy optimizer UI"
   }
 }
