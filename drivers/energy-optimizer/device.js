@@ -1783,6 +1783,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         gridPercent: estimatedGridPercent,
         totalCost,
         gridOnlyAvgPrice: estimatedPrice,
+        unknownAvgPrice: estimatedPrice,
+        trackedKWh: 0,
+        unknownKWh: totalKWh,
         isEstimated: true, // Flag to indicate this is estimated, not tracked
       };
     } catch (error) {
@@ -1828,6 +1831,9 @@ class EnergyOptimizerDevice extends RCTDevice {
         storedKWh: totalKWh,
         trackedKWh: 0,
         unknownKWh: totalKWh,
+        unknownAvgPrice: Number.isFinite(estimated.unknownAvgPrice)
+          ? estimated.unknownAvgPrice
+          : (Number.isFinite(estimated.gridOnlyAvgPrice) ? estimated.gridOnlyAvgPrice : 0.20),
         isEstimated: true,
       };
     }

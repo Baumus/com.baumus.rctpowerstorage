@@ -510,7 +510,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
         totalSolarChargeCostEur += solarCostEur;
         plannedChargeParts.push({
           source: 'solar',
-          symbol: '☀',
+          symbol: '☀️',
           energyKWh: solarCharge,
           priceEurPerKWh: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
           costEur: solarCostEur,
@@ -518,7 +518,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
         chargeDisplayEntries.push({
           ...indexedData[t],
           plannedEnergySource: 'solar',
-          plannedSymbol: '☀',
+          plannedSymbol: '☀️',
           plannedEnergyKWh: solarCharge,
           plannedPriceEurPerKWh: SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
           plannedCostEur: solarCostEur,

@@ -742,6 +742,11 @@
         
         function renderTimeline(strategy) {
             const container = document.getElementById('timelineContainer');
+
+            const safeToFixed = (value, digits, fallback = '-') => {
+                if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+                return value.toFixed(digits);
+            };
             
             if (!strategy || (!strategy.chargeIntervals && !strategy.expensiveIntervals)) {
                 container.innerHTML = '<div class="no-data">No optimization plan available</div>';
@@ -753,11 +758,13 @@
             // Battery Status Section (NEW)
             if (strategy.batteryStatus) {
                 const bat = strategy.batteryStatus;
-                const socPercent = (bat.currentSoc * 100).toFixed(1);
-                const targetPercent = (bat.targetSoc * 100).toFixed(1);
-                const availableKWh = bat.availableCapacity.toFixed(2);
-                const storedKWh = bat.storedKWh ? bat.storedKWh.toFixed(2) : '-';
-                const batteryFull = bat.currentSoc >= bat.targetSoc;
+                const socPercent = safeToFixed((bat.currentSoc || 0) * 100, 1);
+                const targetPercent = safeToFixed((bat.targetSoc || 0) * 100, 1);
+                const availableKWh = safeToFixed(bat.availableCapacity, 2);
+                const storedKWh = safeToFixed(bat.storedKWh, 2);
+                const batteryFull = (typeof bat.currentSoc === 'number' && typeof bat.targetSoc === 'number')
+                    ? bat.currentSoc >= bat.targetSoc
+                    : false;
                 
                 html += `
                     <div class="section-title">🔋 Battery Status</div>
@@ -783,15 +790,17 @@
                 if (bat.energyCost) {
                     const cost = bat.energyCost;
                     const isEstimated = cost.isEstimated || false;
-                    const hasUnknownPortion = cost.unknownKWh > 0.01;
+                    const trackedKWh = (typeof cost.trackedKWh === 'number' && Number.isFinite(cost.trackedKWh)) ? cost.trackedKWh : 0;
+                    const unknownKWh = (typeof cost.unknownKWh === 'number' && Number.isFinite(cost.unknownKWh)) ? cost.unknownKWh : 0;
+                    const hasMixedData = trackedKWh > 0.01 && unknownKWh > 0.01;
                     
                     let label = '💰 Avg. Battery Energy Cost:';
                     let subtitle = '';
                     let detailsHtml = '';
                     
-                    if (hasUnknownPortion) {
+                    if (hasMixedData) {
                         label = '💰 Avg. Battery Energy Cost (Mixed):';
-                        subtitle = `📊 Tracked: ${cost.trackedKWh.toFixed(2)} kWh | Unknown: ${cost.unknownKWh.toFixed(2)} kWh (estimated @ ${cost.unknownAvgPrice.toFixed(4)} €/kWh)`;
+                        subtitle = `📊 Tracked: ${safeToFixed(trackedKWh, 2)} kWh | Unknown: ${safeToFixed(unknownKWh, 2)} kWh (estimated @ ${safeToFixed(cost.unknownAvgPrice, 4, '?')} €/kWh)`;
                     } else if (isEstimated) {
                         label = '💰 Avg. Battery Energy Cost (Estimated):';
                         subtitle = '⚠️ Source unknown - using estimated price';
@@ -805,12 +814,12 @@
                             <div style="width: 100%;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span class="status-label">${label}</span>
-                                    <span class="status-value">${cost.avgPrice.toFixed(4)} €/kWh</span>
+                                    <span class="status-value">${safeToFixed(cost.avgPrice, 4)} €/kWh</span>
                                 </div>
-                                ${subtitle ? `<div style="font-size: 0.85em; color: ${hasUnknownPortion ? '#3498db' : '#f39c12'}; margin-bottom: 4px;">${subtitle}</div>` : ''}
+                                ${subtitle ? `<div style="font-size: 0.85em; color: ${hasMixedData ? '#3498db' : '#f39c12'}; margin-bottom: 4px;">${subtitle}</div>` : ''}
                                 <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    <span>☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)</span>
-                                    <span>⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)</span>
+                                    <span>☀️ Solar: ${safeToFixed(cost.solarKWh, 2)} kWh (${safeToFixed(cost.solarPercent, 0)}%)</span>
+                                    <span>⚡ Grid: ${safeToFixed(cost.gridKWh, 2)} kWh (${safeToFixed(cost.gridPercent, 0)}%)</span>
                                 </div>
                             </div>
                         </div>

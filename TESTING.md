@@ -1,262 +1,156 @@
-# Testing Infrastructure
+\# Testing
 
-This document describes the testing architecture for the RCT Power Storage Homey app.
+This repo uses Jest to test the extracted (mostly pure) energy-optimizer logic and a small amount of settings-page JS.
 
-## Overview
+## Quick Start
 
-The energy optimization logic has been extracted into pure, testable functions and is now thoroughly tested with Jest. The architecture separates concerns into five main modules:
+Prerequisite: Node.js `>=16.0.0` (see `package.json`).
 
-1. **optimizer-core.js** - Optimization algorithms (heuristic + LP solver)
-2. **strategy-execution-core.js** - Battery mode decision logic
-3. **battery-cost-core.js** - Battery energy cost tracking (FIFO accounting)
-4. **time-scheduling-core.js** - Time/interval calculations and scheduling
-5. **device.js** - Homey device integration
+```bash
+npm install
+npm test
+```
 
-## Test Structure
-
-### Test Files
-
-- `test/optimizer-core.test.js` - Heuristic optimization algorithm (14 tests)
-- `test/optimizer-lp.test.js` - LP solver optimization and error handling (16 tests)
-- `test/strategy-execution-core.test.js` - Battery mode decisions (32 tests)
-- `test/battery-cost-core.test.js` - Battery cost calculations (31 tests)
-- `test/time-scheduling-core.test.js` - Time/interval logic (55 tests)
-- `test/integration.test.js` - **Module integration (12 tests) ✨**
-- `test/settings-rendering.test.js` - **Settings UI data processing (29 tests) ✨**
-- `test/device-battery-tracking.test.js` - **Device battery tracking bugs (4 tests) ✨ NEW**
-- `tools/simulate-optimizer.js` - CLI simulator for manual testing
-
-**Total**: 159 unit tests + 12 integration tests + 29 UI tests + 4 device tests = **224 tests** covering all logic
-
-### Core Modules Tested
-
-#### optimizer-core.js
-- `computeHeuristicStrategy()` - Heuristic optimization algorithm
-- `optimizeStrategyWithLp()` - Linear Programming optimization
-- `forecastEnergyDemand()` - Energy demand forecasting
-- `getPercentile()` - Statistical calculations
-
-#### strategy-execution-core.js
-- `decideBatteryMode()` - Decides battery mode based on strategy and conditions
-- `findCurrentIntervalIndex()` - Finds current time slot in price cache
-- `hasModeChanged()` - Detects mode transitions
-- `BATTERY_MODE` - Battery mode constants
-
-#### battery-cost-core.js
-- `calculateBatteryEnergyCost()` - Calculates average cost of energy in battery
-- `createChargeEntry()` - Creates charge log entry with solar/grid split
-- `createDischargeEntry()` - Creates discharge log entry
-- `shouldClearChargeLog()` - Determines if log should be cleared
-- `trimChargeLog()` - Trims log to max entries
-- `calculateDischargeProfit()` - Calculates profit/loss from discharge
-
-#### time-scheduling-core.js (NEW)
-- `getIntervalOfDay()` - Converts Date to interval index (0-95 for 15min)
-- `getPriceAtTime()` - Finds price for specific timestamp
-- `filterFutureIntervals()` - Filters intervals after current time
-- `filterCurrentAndFutureIntervals()` - Filters with buffer time
-- `enrichPriceData()` - Adds index and intervalOfDay to price entries
-- `groupConsecutiveIntervals()` - Groups consecutive time slots
-- `formatTime()` / `formatDateTime()` - Time formatting utilities
-- `isToday()` / `isTomorrow()` / `isSameDay()` - Date comparison utilities
-- `getNextIntervalStart()` - Finds next future interval
-- `intervalMinutesToHours()` / `intervalsPerDay()` - Interval calculations
-
-## Running Tests
+Common commands:
 
 ```bash
 # Run all tests
 npm test
 
-# Run tests in watch mode (auto-rerun on file changes)
+# Watch mode
 npm run test:watch
 
-# Run tests with coverage report
+# Coverage (writes to ./coverage)
 npm run test:coverage
 
-# Run specific test file
-npm test -- optimizer-core.test.js
-npm test -- optimizer-lp.test.js
-npm test -- strategy-execution-core.test.js
-npm test -- battery-cost-core.test.js
-npm test -- time-scheduling-core.test.js
-npm test -- integration.test.js
-npm test -- settings-rendering.test.js
+# Lint
+npm run lint
 ```
 
-## Test Coverage
+## What Jest Runs (Important)
 
-### optimizer-core.js
-- **Statements**: 89.78%
-- **Branches**: 76.78%
-- **Functions**: 91.3%
-- **Lines**: 93.16%
+Jest is configured via `jest.config.json` with:
 
-### strategy-execution-core.js
-- **Full coverage** of all decision paths
-- Tests all battery modes: CHARGE, DISCHARGE, NORMAL_SOLAR, NORMAL_HOLD, IDLE
-- Covers hysteresis behavior and oscillation prevention
+- `testEnvironment`: `node`
+- `testMatch`: `**/test/**/*.test.js`
 
-### battery-cost-core.js
-- **Full coverage** of FIFO accounting logic
-- Tests charge/discharge entry creation
-- Covers cost calculation with mixed solar/grid energy
-- Tests proportional discharge tracking
+Because the repo contains a build mirror under `.homeybuild/`, the `testMatch` pattern matches **both**:
 
-### time-scheduling-core.js
-- **Full coverage** of time/interval calculations
-- Tests interval-of-day calculations for 15 and 30-minute intervals
-- Covers price lookup with date matching
-- Tests filtering and sorting of intervals
-- Covers consecutive interval grouping
-- Tests date comparison and formatting utilities
+- `test/**/*.test.js`
+- `.homeybuild/test/**/*.test.js`
 
-## Test Scenarios
+That means each test file is executed twice (once against the source tree, once against the `.homeybuild` mirror).
 
-### Unit Tests - Heuristic Strategy (14 tests)
+Current verified totals (from `npm test -- --json --outputFile test-results.json`):
 
-#### `getPercentile()`
-- ✅ Calculates 50th percentile (median) correctly
-- ✅ Calculates 70th percentile correctly
-- ✅ Handles empty array
-- ✅ Handles single value
+- **Test Suites**: 22
+- **Tests**: 448
 
-#### `forecastEnergyDemand()`
-- ✅ Returns 0 for empty intervals
-- ✅ Uses default 3kW when no history available
-- ✅ Uses historical data when available
-- ✅ Handles malformed history data gracefully
-- ✅ Handles missing intervalOfDay
+To see the authoritative list of executed test files:
 
-#### `computeHeuristicStrategy()`
-- ✅ Charges during cheap hours and discharges during expensive hours
-- ✅ Does not charge when battery is already at target SoC
-- ✅ Respects minimum profit threshold
-- ✅ Handles flat price profile (no optimization needed)
-- ✅ Prioritizes highest price differences for maximum savings
-- ✅ Respects battery capacity limits
+```bash
+npx jest --listTests
+```
 
-### Unit Tests - LP Solver Strategy (16 tests)
+### Optional: Run only source tests (exclude `.homeybuild`)
 
-#### `optimizeStrategyWithLp()`
-- ✅ Returns null when LP solver not provided
-- ✅ Returns null for empty price data
-- ✅ Validates battery parameters (capacity, charge power)
-- ✅ Validates SoC values (must be 0-1 range)
-- ✅ Handles LP solver throwing error
-- ✅ Handles LP solver returning invalid solution
-- ✅ Successfully optimizes with valid LP solution
-- ✅ Filters out intervals below threshold (0.01 kWh)
-- ✅ Returns null when battery at target and empty
-- ✅ Calls logger when provided
+If you want Jest to ignore `.homeybuild/`, add this to `jest.config.json`:
 
-### Error Handling & Edge Cases
+```json
+{
+   "testPathIgnorePatterns": ["/\\.homeybuild/"]
+}
+```
 
-- ✅ Handles missing history gracefully
-- ✅ Handles malformed history data (null/undefined)
-- ✅ Handles missing intervalOfDay in price data
-- ✅ Handles extreme efficiency loss (50%)
-- ✅ Handles very small battery (1 kWh)
-- ✅ Handles large number of intervals (96 intervals/day)
+Note: doing so will halve suite/test counts because duplicates are removed.
 
-### Unit Tests - Strategy Execution (32 tests)
+## Test Layout
 
-#### `findCurrentIntervalIndex()`
-- ✅ Finds correct interval index in price cache
-- ✅ Returns -1 if time is before first interval
-- ✅ Returns -1 if time is after last interval
-- ✅ Handles exact interval boundaries correctly
+Source tests live in `test/`:
 
-#### `hasModeChanged()`
-- ✅ Returns true when mode changes
-- ✅ Returns false when mode stays the same
-- ✅ Returns false when lastMode is null
+- `test/battery-cost-core.test.js`
+- `test/device-battery-tracking.test.js`
+- `test/device-resource-optimization.test.js`
+- `test/device-stability-hardening.test.js`
+- `test/device-tibber-retry.test.js`
+- `test/integration.test.js`
+- `test/optimizer-core.test.js`
+- `test/optimizer-lp.test.js`
+- `test/settings-rendering.test.js`
+- `test/strategy-execution-core.test.js`
+- `test/time-scheduling-core.test.js`
 
-#### `decideBatteryMode()` - Input Validation
-- ✅ Returns IDLE for invalid timestamp
-- ✅ Returns IDLE for missing price cache
-- ✅ Returns IDLE for empty price cache
-- ✅ Returns IDLE for missing strategy
-- ✅ Returns IDLE when current time not in any interval
+The same files exist under `.homeybuild/test/` and are executed as well (see “What Jest Runs”).
 
-#### `decideBatteryMode()` - Charge Decisions
-- ✅ Decides CHARGE mode for planned charge intervals
-- ✅ Prioritizes charge over discharge (if overlap)
+## Modules Under Test (High Level)
 
-#### `decideBatteryMode()` - Discharge Decisions
-- ✅ Decides DISCHARGE mode for planned discharge intervals
+The energy-optimizer driver is structured around small, testable modules:
 
-#### `decideBatteryMode()` - Normal Mode Decisions
-- ✅ Decides NORMAL_SOLAR for solar excess (< -300W)
-- ✅ Decides NORMAL_HOLD for grid consumption (> 300W)
-- ✅ Maintains lastMode in neutral zone (prevents oscillation)
-- ✅ Defaults to NORMAL_HOLD when no lastMode
-- ✅ Does not maintain non-normal modes (CHARGE/DISCHARGE)
+- `drivers/energy-optimizer/optimizer-core.js`: strategy generation using LP (LP-only; no heuristic fallback)
+- `drivers/energy-optimizer/strategy-execution-core.js`: battery mode decision logic
+- `drivers/energy-optimizer/battery-cost-core.js`: battery charge/discharge accounting (solar vs grid split)
+- `drivers/energy-optimizer/time-scheduling-core.js`: interval/time helpers for price caches
+- `drivers/energy-optimizer/constants.js`: shared constants for the energy-optimizer driver
+- `drivers/energy-optimizer/device.js`: Homey integration/orchestration layer
 
-#### `decideBatteryMode()` - Custom Thresholds
-- ✅ Respects custom solar threshold
-- ✅ Respects custom consumption threshold
+## Coverage
 
-#### `decideBatteryMode()` - Edge Cases
-- ✅ Handles missing chargeIntervals in strategy
-- ✅ Handles missing dischargeIntervals in strategy
-- ✅ Handles undefined gridPower (defaults to 0)
-- ✅ Handles 30-minute intervals
-- ✅ Handles large interval counts (96 intervals)
+Coverage is collected from:
 
-#### `decideBatteryMode()` - Real-World Scenarios
-- ✅ Typical morning charging scenario (02:00-03:00)
-- ✅ Typical evening discharge scenario (18:00-19:00)
-- ✅ Midday solar production handling
-- ✅ Prevents oscillation during grid power fluctuations
+- `drivers/**/*.js`
+- `lib/**/*.js`
 
-### Unit Tests - Battery Cost Tracking (31 tests)
+Excluding `node_modules` and any `test/**` folders.
 
-#### `createChargeEntry()`
-- ✅ Creates charge entry with solar and grid split
-- ✅ Handles all energy from solar
-- ✅ Handles all energy from grid
-- ✅ Uses default values for optional parameters
+Global coverage thresholds are configured in `jest.config.json` and currently set to **50%** for branches/functions/lines/statements.
 
-#### `createDischargeEntry()`
-- ✅ Creates discharge entry with negative totalKWh
-- ✅ Handles positive dischargedKWh and makes it negative
-- ✅ Uses default values for optional parameters
+Run coverage:
 
-#### `shouldClearChargeLog()`
-- ✅ Returns true when SoC at or below threshold with entries
-- ✅ Returns false when SoC above threshold
-- ✅ Returns false when log is empty
-- ✅ Handles different thresholds
+```bash
+npm run test:coverage
+```
 
-#### `trimChargeLog()`
-- ✅ Trims log to max entries
-- ✅ Does not trim if log is smaller than max
-- ✅ Handles empty log
-- ✅ Handles null/undefined log
-- ✅ Handles exact size match
+Outputs:
 
-#### `calculateDischargeProfit()`
-- ✅ Calculates profit for profitable discharge
-- ✅ Calculates loss for unprofitable discharge
-- ✅ Handles zero discharge
-- ✅ Handles negative values
-- ✅ Handles break-even scenario
+- `coverage/` (HTML report under `coverage/lcov-report/`)
 
-#### `calculateBatteryEnergyCost()`
-- ✅ Returns null for empty log
-- ✅ Calculates cost for simple charge from grid
-- ✅ Calculates cost for simple charge from solar
-- ✅ Calculates cost for mixed solar and grid charge
-- ✅ Handles charge and discharge sequence
-- ✅ Handles multiple charges at different prices
-- ✅ Returns null when battery is effectively empty
-- ✅ Handles complex charge/discharge sequences
-- ✅ Handles edge case of very small remaining energy
-- ✅ Calls logger when provided
-- ✅ Handles proportional discharge correctly
+## Manual Testing
 
-## Architecture Benefits
+There is a lightweight simulator for ad-hoc experiments:
+
+```bash
+node tools/simulate-optimizer.js
+```
+
+## Troubleshooting
+
+1) Install deps: `npm install`
+
+2) Check Node version: `node --version` (must satisfy `>=16`)
+
+3) Clear Jest cache:
+
+```bash
+npx jest --clearCache
+```
+
+## CI Example
+
+```yaml
+- name: Install
+   run: npm ci
+
+- name: Test
+   run: npm test
+
+- name: Coverage
+   run: npm run test:coverage
+```
+
+## References
+
+- Jest: https://jestjs.io/
+- Homey Apps SDK: https://apps.developer.homey.app/
 
 ### Separation of Concerns
 

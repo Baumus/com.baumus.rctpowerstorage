@@ -669,6 +669,8 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(combined.unknownKWh).toBeCloseTo(8.0, 2);
       expect(combined.isEstimated).toBe(true);
       expect(combined.avgPrice).toBeGreaterThan(0);
+      expect(typeof combined.unknownAvgPrice).toBe('number');
+      expect(combined.unknownAvgPrice).toBeCloseTo(0.20, 3);
     });
 
     it('should combine tracked and unknown energy with weighted average', () => {

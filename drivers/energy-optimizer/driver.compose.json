@@ -342,43 +342,6 @@
           }
         },
         {
-          "id": "price_threshold_percent",
-          "type": "number",
-          "label": {
-            "en": "Price Threshold (% below average)",
-            "nl": "Prijsdrempel (% onder gemiddelde)",
-            "de": "Preisschwelle (% unter Durchschnitt)",
-            "fr": "Seuil de Prix (% en dessous de la moyenne)",
-            "it": "Soglia di Prezzo (% sotto media)",
-            "sv": "Priströskel (% under genomsnitt)",
-            "no": "Pristerskel (% under gjennomsnitt)",
-            "es": "Umbral de Precio (% por debajo del promedio)",
-            "da": "Pristærskel (% under gennemsnit)",
-            "ru": "Порог Цены (% ниже среднего)",
-            "pl": "Próg Cenowy (% poniżej średniej)"
-          },
-          "hint": {
-            "en": "Only charge when price is at least this much below 24h average",
-            "nl": "Alleen opladen als de prijs minstens zoveel onder het 24-uurs gemiddelde ligt",
-            "de": "Nur laden, wenn der Preis mindestens so viel unter dem 24-Stunden-Durchschnitt liegt",
-            "fr": "Ne charger que lorsque le prix est au moins cette valeur en dessous de la moyenne sur 24h",
-            "it": "Carica solo quando il prezzo è almeno così tanto sotto la media di 24h",
-            "sv": "Ladda endast när priset är minst så mycket under 24-timmars genomsnittet",
-            "no": "Lad bare når prisen er minst så mye under 24-timers gjennomsnittet",
-            "es": "Cargar solo cuando el precio esté al menos esta cantidad por debajo del promedio de 24h",
-            "da": "Oplad kun når prisen er mindst så meget under 24-timers gennemsnittet",
-            "ru": "Заряжать только когда цена как минимум настолько ниже среднего за 24ч",
-            "pl": "Ładuj tylko gdy cena jest przynajmniej o tyle poniżej średniej z 24h"
-          },
-          "value": 10,
-          "min": 0,
-          "max": 50,
-          "step": 5,
-          "units": {
-            "en": "%"
-          }
-        },
-        {
           "id": "charge_power_kw",
           "type": "number",
           "label": {

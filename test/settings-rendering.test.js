@@ -820,6 +820,7 @@ describe('Settings Page Data Rendering', () => {
             gridPercent: 70,
             totalCost: 1.12,
             gridOnlyAvgPrice: 0.20,
+            unknownAvgPrice: 0.20,
             isEstimated: true,
             trackedKWh: 0,
             unknownKWh: 8.0,
@@ -841,6 +842,7 @@ describe('Settings Page Data Rendering', () => {
       expect(cost.isEstimated).toBe(true);
       expect(cost.trackedKWh).toBe(0);
       expect(cost.unknownKWh).toBe(8.0);
+      expect(cost.unknownAvgPrice).toBe(0.20);
     });
 
     it('should display battery status with mixed energy cost (tracked + unknown)', () => {
