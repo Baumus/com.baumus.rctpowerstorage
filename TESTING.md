@@ -34,17 +34,11 @@ Jest is configured via `jest.config.json` with:
 - `testEnvironment`: `node`
 - `testMatch`: `**/test/**/*.test.js`
 
-Because the repo contains a build mirror under `.homeybuild/`, the `testMatch` pattern matches **both**:
+The repo contains a build mirror under `.homeybuild/`, but **Jest is configured to ignore `.homeybuild/` by default** to avoid running every test twice.
 
-- `test/**/*.test.js`
-- `.homeybuild/test/**/*.test.js`
+Relevant config:
 
-That means each test file is executed twice (once against the source tree, once against the `.homeybuild` mirror).
-
-Current verified totals (from `npm test -- --json --outputFile test-results.json`):
-
-- **Test Suites**: 22
-- **Tests**: 448
+- `testPathIgnorePatterns`: includes `/\.homeybuild/`
 
 To see the authoritative list of executed test files:
 
@@ -52,17 +46,9 @@ To see the authoritative list of executed test files:
 npx jest --listTests
 ```
 
-### Optional: Run only source tests (exclude `.homeybuild`)
+### Optional: Intentionally include `.homeybuild` tests
 
-If you want Jest to ignore `.homeybuild/`, add this to `jest.config.json`:
-
-```json
-{
-   "testPathIgnorePatterns": ["/\\.homeybuild/"]
-}
-```
-
-Note: doing so will halve suite/test counts because duplicates are removed.
+If you *want* to run the mirrored tests as well (not recommended for day-to-day work), remove `/\.homeybuild/` from `testPathIgnorePatterns` in `jest.config.json`.
 
 ## Test Layout
 
@@ -81,6 +67,8 @@ Source tests live in `test/`:
 - `test/time-scheduling-core.test.js`
 
 The same files exist under `.homeybuild/test/` and are executed as well (see “What Jest Runs”).
+
+Note: `.homeybuild/test/**` exists for the Homey build mirror, but is **ignored by Jest by default**.
 
 ## Modules Under Test (High Level)
 

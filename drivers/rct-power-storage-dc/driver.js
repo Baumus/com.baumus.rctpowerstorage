@@ -108,7 +108,7 @@ class MyDriver extends RCTDriver {
 
     session.setHandler('list_devices', async () => {
       if (!inverter) return [];
-      
+
       return [
         {
           name: inverter.name,

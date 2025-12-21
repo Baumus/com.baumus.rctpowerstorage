@@ -276,6 +276,68 @@ describe('strategy-execution-core', () => {
         expect(result.intervalIndex).toBe(20);
         expect(result.reason).toContain('Planned discharge interval');
       });
+
+      it('should force NORMAL_SOLAR when SoC is at/below min threshold (discharge blocked)', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], [20, 21]);
+        const now = new Date('2024-01-15T05:00:00.000Z'); // Index 20
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: 500,
+          currentSocPercent: 7.0,
+          minSocThresholdPercent: 7.0,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.intervalIndex).toBe(20);
+        expect(result.reason).toContain('Low SoC');
+      });
+    });
+
+    describe('Low SoC override', () => {
+      it('should force NORMAL_SOLAR on normal intervals even when consuming from grid', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T18:00:00.000Z'); // Index 72
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: 900,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          currentSocPercent: 6.0,
+          minSocThresholdPercent: 7.0,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.intervalIndex).toBe(72);
+        expect(result.reason).toContain('Low SoC');
+      });
+
+      it('should still allow CHARGE for planned grid charge even when SoC is low', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedGridEnergyKWh: 1.0, plannedSolarEnergyKWh: 0 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: -5000,
+          currentSocPercent: 6.0,
+          minSocThresholdPercent: 7.0,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.CHARGE);
+        expect(result.reason).toContain('Planned grid charge interval');
+      });
     });
 
     describe('Normal interval decisions - grid power based', () => {

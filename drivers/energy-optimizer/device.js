@@ -189,7 +189,13 @@ class EnergyOptimizerDevice extends RCTDevice {
    * Helper: Get setting with fallback default value
    */
   getSettingOrDefault(key, fallback) {
-    const value = this.getSetting(key);
+    let value;
+    if (typeof this.getSetting === 'function') {
+      value = this.getSetting(key);
+    } else if (typeof this.getSettings === 'function') {
+      const settings = this.getSettings() || {};
+      value = settings[key];
+    }
     return (value === null || value === undefined || value === '') ? fallback : value;
   }
 
@@ -1102,6 +1108,18 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Get grid power for decision making
     const gridPower = await this.collectGridPower();
 
+    const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
+    const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
+
+    if (!batteryDevice) {
+      this.error(`Battery device not found with ID: ${batteryDeviceId}`);
+      await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('error.battery_not_found'));
+      return;
+    }
+
+    const currentSocPercent = this.getCapabilitySafe(batteryDevice, 'measure_battery');
+    const minSocThresholdPercent = parseFloat(this.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD));
+
     // Use pure function to decide battery mode
     const decision = decideBatteryMode({
       now: new Date(),
@@ -1109,6 +1127,8 @@ class EnergyOptimizerDevice extends RCTDevice {
       strategy: this.currentStrategy,
       gridPower,
       lastMode: this.lastBatteryMode,
+      currentSocPercent,
+      minSocThresholdPercent,
       thresholds: {
         solarThreshold: GRID_SOLAR_THRESHOLD_W,
         consumptionThreshold: GRID_CONSUMPTION_THRESHOLD_W,
@@ -1126,15 +1146,6 @@ class EnergyOptimizerDevice extends RCTDevice {
 
     // Execute the decided mode
     try {
-      const batteryDeviceId = this.getSettingOrDefault('battery_device_id', '');
-      const batteryDevice = this.getDeviceById('rct-power-storage-dc', batteryDeviceId);
-
-      if (!batteryDevice) {
-        this.error(`Battery device not found with ID: ${batteryDeviceId}`);
-        await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('error.battery_not_found'));
-        return;
-      }
-
       await this.applyBatteryMode(batteryDevice, decision);
 
       // Store current mode for next comparison
@@ -1826,14 +1837,19 @@ class EnergyOptimizerDevice extends RCTDevice {
     if (trackedKWh < 0.01) {
       const estimated = this.estimateBatteryEnergyCost(totalKWh / batteryCapacity, batteryCapacity);
       if (!estimated) return null;
+      let unknownPrice = 0.20;
+      if (Number.isFinite(estimated.unknownAvgPrice)) {
+        unknownPrice = estimated.unknownAvgPrice;
+      } else if (Number.isFinite(estimated.gridOnlyAvgPrice)) {
+        unknownPrice = estimated.gridOnlyAvgPrice;
+      }
+
       return {
         ...estimated,
         storedKWh: totalKWh,
         trackedKWh: 0,
         unknownKWh: totalKWh,
-        unknownAvgPrice: Number.isFinite(estimated.unknownAvgPrice)
-          ? estimated.unknownAvgPrice
-          : (Number.isFinite(estimated.gridOnlyAvgPrice) ? estimated.gridOnlyAvgPrice : 0.20),
+        unknownAvgPrice: unknownPrice,
         isEstimated: true,
       };
     }

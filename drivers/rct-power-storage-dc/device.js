@@ -53,9 +53,6 @@ class MyDevice extends RCTDevice {
     this._lastUpdate = Date.now();
     this._lastBatteryPower = 0;
 
-    // Register flow action cards
-    this.registerFlowActions();
-
     // Error handling for connection errors
     try {
       // Query the Battery Capacity and Module Health (only during initialization)
@@ -98,26 +95,6 @@ class MyDevice extends RCTDevice {
       this.log('Error during initialization:', error);
       await this.handleConnectionError(error);
     }
-  }
-
-  /**
-   * Register flow action cards
-   */
-  registerFlowActions() {
-    this.homey.flow.getActionCard('enable_grid_charging')
-      .registerRunListener(async () => {
-        await this.enableGridCharging();
-      });
-
-    this.homey.flow.getActionCard('enable_default_operating_mode')
-      .registerRunListener(async () => {
-        await this.enableDefaultOperatingMode();
-      });
-
-    this.homey.flow.getActionCard('disable_battery_discharge')
-      .registerRunListener(async () => {
-        await this.disableBatteryDischarge();
-      });
   }
 
   /**

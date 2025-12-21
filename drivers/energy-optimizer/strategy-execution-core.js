@@ -64,6 +64,8 @@ function decideBatteryMode(params) {
     strategy,
     gridPower = 0,
     lastMode = null,
+    currentSocPercent = null,
+    minSocThresholdPercent = null,
     thresholds = { solarThreshold: -300, consumptionThreshold: 300 },
     intervalMinutes = 15,
   } = params;
@@ -118,6 +120,10 @@ function decideBatteryMode(params) {
     && Array.isArray(strategy.dischargeIntervals)
     && strategy.dischargeIntervals.some(matchesCurrentInterval);
 
+  const isLowSoc = (typeof currentSocPercent === 'number' && Number.isFinite(currentSocPercent))
+    && (typeof minSocThresholdPercent === 'number' && Number.isFinite(minSocThresholdPercent))
+    && currentSocPercent <= minSocThresholdPercent;
+
   // Priority 1: Charge interval
   if (shouldCharge) {
     const EPS_KWH = 0.001;
@@ -152,6 +158,14 @@ function decideBatteryMode(params) {
 
     const hasPlannedGridCharge = Number.isFinite(plannedGridEnergyKWh) && plannedGridEnergyKWh > EPS_KWH;
     const hasPlannedSolarCharge = Number.isFinite(plannedSolarEnergyKWh) && plannedSolarEnergyKWh > EPS_KWH;
+
+    if (isLowSoc && !hasPlannedGridCharge) {
+      return {
+        mode: BATTERY_MODE.NORMAL_SOLAR,
+        intervalIndex: currentIntervalIndex,
+        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR to store solar excess`,
+      };
+    }
 
     // Battery_Mode.CHARGE must only be used for charging from grid.
     if (hasPlannedGridCharge || (!hasPlannedSolarCharge && !hasPlannedGridCharge)) {
@@ -194,6 +208,13 @@ function decideBatteryMode(params) {
 
   // Priority 2: Discharge interval (expensive hour)
   if (shouldDischarge) {
+    if (isLowSoc) {
+      return {
+        mode: BATTERY_MODE.NORMAL_SOLAR,
+        intervalIndex: currentIntervalIndex,
+        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR (discharge blocked anyway)`,
+      };
+    }
     return {
       mode: BATTERY_MODE.DISCHARGE,
       intervalIndex: currentIntervalIndex,
@@ -203,6 +224,14 @@ function decideBatteryMode(params) {
 
   // Priority 3: Normal interval - decide based on grid power with hysteresis
   const { solarThreshold, consumptionThreshold } = thresholds;
+
+  if (isLowSoc) {
+    return {
+      mode: BATTERY_MODE.NORMAL_SOLAR,
+      intervalIndex: currentIntervalIndex,
+      reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR to store solar excess`,
+    };
+  }
 
   if (gridPower < solarThreshold) {
     // Significant solar excess → allow battery charging and discharging
