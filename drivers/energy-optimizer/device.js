@@ -1210,7 +1210,7 @@ class EnergyOptimizerDevice extends RCTDevice {
         if (typeof batteryDevice.enableGridCharging === 'function') {
           await batteryDevice.enableGridCharging();
           this.log('   ✓ enableGridCharging() completed successfully');
-          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.charging'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.grid_charging'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode, priceInfo);
@@ -1220,14 +1220,14 @@ class EnergyOptimizerDevice extends RCTDevice {
         }
         break;
 
-      case BATTERY_MODE.DISCHARGE:
-        this.log(`⚡ DISCHARGE INTERVAL ACTIVE (index ${intervalIndex})`);
+      case BATTERY_MODE.NORMAL:
+        this.log(`🏠 NORMAL MODE (index ${intervalIndex})`);
         this.log(`   → ${reason}`);
 
         if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
           await batteryDevice.enableDefaultOperatingMode();
           this.log('   ✓ enableDefaultOperatingMode() completed successfully');
-          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.discharging'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.battery_use_enabled'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode, priceInfo);
@@ -1237,31 +1237,14 @@ class EnergyOptimizerDevice extends RCTDevice {
         }
         break;
 
-      case BATTERY_MODE.NORMAL_SOLAR:
-        this.log(`🔒 NORMAL INTERVAL (index ${intervalIndex})`);
-        this.log(`   → ${reason}`);
-
-        if (typeof batteryDevice.enableDefaultOperatingMode === 'function') {
-          await batteryDevice.enableDefaultOperatingMode();
-          this.log('   ✓ enableDefaultOperatingMode() completed successfully');
-          await this.setCapabilityValueIfChanged('optimizer_status', `${this.homey.__('status.monitoring')} (Solar)`);
-
-          if (lastMode !== mode) {
-            await this.logBatteryModeChange(mode);
-          }
-        } else {
-          this.error('❌ Battery device does not have enableDefaultOperatingMode method');
-        }
-        break;
-
-      case BATTERY_MODE.NORMAL_HOLD:
-        this.log(`🔒 NORMAL INTERVAL (index ${intervalIndex})`);
+      case BATTERY_MODE.CONSTANT:
+        this.log(`🔒 CONSTANT MODE (index ${intervalIndex})`);
         this.log(`   → ${reason}`);
 
         if (typeof batteryDevice.disableBatteryDischarge === 'function') {
           await batteryDevice.disableBatteryDischarge();
           this.log('   ✓ disableBatteryDischarge() completed successfully');
-          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.monitoring'));
+          await this.setCapabilityValueIfChanged('optimizer_status', this.homey.__('status.solar_charging'));
 
           if (lastMode !== mode) {
             await this.logBatteryModeChange(mode);
@@ -1289,16 +1272,12 @@ class EnergyOptimizerDevice extends RCTDevice {
           message = this.homey.__('timeline.charging');
           icon = '⚡';
           break;
-        case 'DISCHARGE':
-          message = this.homey.__('timeline.discharging');
-          icon = '🔋';
+        case 'NORMAL':
+          message = this.homey.__('timeline.normal');
+          icon = '🏠';
           break;
-        case 'NORMAL_SOLAR':
-          message = this.homey.__('timeline.normal_solar');
-          icon = '☀️';
-          break;
-        case 'NORMAL_HOLD':
-          message = this.homey.__('timeline.normal_hold');
+        case 'CONSTANT':
+          message = this.homey.__('timeline.constant');
           icon = '🔒';
           break;
         default:

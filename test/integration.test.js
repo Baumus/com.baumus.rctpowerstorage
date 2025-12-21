@@ -105,7 +105,7 @@ describe('Integration Tests - Light', () => {
       expect(decisionCharge).toBeDefined();
       expect(decisionDischarge).toBeDefined();
       expect(decisionCharge.mode).toBe(BATTERY_MODE.CHARGE);
-      expect(decisionDischarge.mode).toBe(BATTERY_MODE.DISCHARGE);
+      expect(decisionDischarge.mode).toBe(BATTERY_MODE.NORMAL);
     });
   });
 

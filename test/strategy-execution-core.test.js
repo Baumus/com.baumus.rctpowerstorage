@@ -67,7 +67,7 @@ describe('strategy-execution-core', () => {
   describe('hasModeChanged', () => {
     it('should return true when mode changes', () => {
       expect(hasModeChanged(BATTERY_MODE.CHARGE, BATTERY_MODE.IDLE)).toBe(true);
-      expect(hasModeChanged(BATTERY_MODE.NORMAL_SOLAR, BATTERY_MODE.NORMAL_HOLD)).toBe(true);
+      expect(hasModeChanged(BATTERY_MODE.NORMAL, BATTERY_MODE.CONSTANT)).toBe(true);
     });
 
     it('should return false when mode stays the same', () => {
@@ -158,7 +158,7 @@ describe('strategy-execution-core', () => {
         expect(result.reason).toContain('0.24'); // Price check
       });
 
-      it('should decide NORMAL_SOLAR for a solar-only planned charge interval when exporting', () => {
+      it('should decide CONSTANT for a solar-only planned charge interval', () => {
         const priceCache = createPriceCache();
         const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
         const strategy = {
@@ -174,13 +174,12 @@ describe('strategy-execution-core', () => {
           thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.intervalIndex).toBe(4);
-        expect(result.reason).toContain('Planned solar charge');
-        expect(result.reason).toContain('solar excess');
+        expect(result.reason).toContain('Planned solar-only charge');
       });
 
-      it('should decide NORMAL_HOLD for a solar-only planned charge interval when consuming', () => {
+      it('should decide CONSTANT for a solar-only planned charge interval even when consuming', () => {
         const priceCache = createPriceCache();
         const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
         const strategy = {
@@ -196,10 +195,9 @@ describe('strategy-execution-core', () => {
           thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.intervalIndex).toBe(4);
-        expect(result.reason).toContain('Planned solar charge');
-        expect(result.reason).toContain('Grid consumption');
+        expect(result.reason).toContain('Planned solar-only charge');
       });
 
       it('should use CHARGE when a charge interval includes planned grid energy', () => {
@@ -261,7 +259,7 @@ describe('strategy-execution-core', () => {
     });
 
     describe('Discharge interval decisions', () => {
-      it('should decide DISCHARGE mode for discharge interval', () => {
+      it('should decide NORMAL mode for discharge interval', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], [20, 21]); // Discharge at indices 20-21
         const now = new Date('2024-01-15T05:00:00.000Z'); // Index 20
@@ -272,12 +270,12 @@ describe('strategy-execution-core', () => {
           strategy,
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.DISCHARGE);
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
         expect(result.intervalIndex).toBe(20);
         expect(result.reason).toContain('Planned discharge interval');
       });
 
-      it('should force NORMAL_SOLAR when SoC is at/below min threshold (discharge blocked)', () => {
+      it('should force CONSTANT when SoC is at/below min threshold (discharge blocked)', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], [20, 21]);
         const now = new Date('2024-01-15T05:00:00.000Z'); // Index 20
@@ -291,33 +289,13 @@ describe('strategy-execution-core', () => {
           minSocThresholdPercent: 7.0,
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.intervalIndex).toBe(20);
         expect(result.reason).toContain('Low SoC');
       });
     });
 
     describe('Low SoC override', () => {
-      it('should force NORMAL_SOLAR on normal intervals even when consuming from grid', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T18:00:00.000Z'); // Index 72
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 900,
-          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-          currentSocPercent: 6.0,
-          minSocThresholdPercent: 7.0,
-        });
-
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
-        expect(result.intervalIndex).toBe(72);
-        expect(result.reason).toContain('Low SoC');
-      });
-
       it('should still allow CHARGE for planned grid charge even when SoC is low', () => {
         const priceCache = createPriceCache();
         const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
@@ -340,8 +318,8 @@ describe('strategy-execution-core', () => {
       });
     });
 
-    describe('Normal interval decisions - grid power based', () => {
-      it('should decide NORMAL_SOLAR for solar excess', () => {
+    describe('Default interval decisions', () => {
+      it('should decide CONSTANT for solar excess', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], []); // No charge/discharge
         const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
@@ -354,13 +332,12 @@ describe('strategy-execution-core', () => {
           thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.intervalIndex).toBe(48);
-        expect(result.reason).toContain('Solar excess');
-        expect(result.reason).toContain('-500 W');
+        expect(result.reason).toContain('CONSTANT');
       });
 
-      it('should decide NORMAL_HOLD for grid consumption', () => {
+      it('should decide CONSTANT for grid consumption', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], []);
         const now = new Date('2024-01-15T18:00:00.000Z'); // Index 72
@@ -373,117 +350,9 @@ describe('strategy-execution-core', () => {
           thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.intervalIndex).toBe(72);
-        expect(result.reason).toContain('Grid consumption');
-        expect(result.reason).toContain('500 W');
-      });
-
-      it('should maintain lastMode in neutral zone (positive lastMode)', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 100, // In neutral zone [-300, 300]
-          lastMode: BATTERY_MODE.NORMAL_SOLAR,
-          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-        });
-
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
-        expect(result.reason).toContain('Neutral zone');
-        expect(result.reason).toContain('maintaining');
-      });
-
-      it('should maintain lastMode in neutral zone (negative lastMode)', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: -100, // In neutral zone [-300, 300]
-          lastMode: BATTERY_MODE.NORMAL_HOLD,
-          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-        });
-
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
-        expect(result.reason).toContain('Neutral zone');
-      });
-
-      it('should default to NORMAL_HOLD in neutral zone without lastMode', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 0, // Neutral zone
-          lastMode: null,
-          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-        });
-
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
-      });
-
-      it('should not maintain CHARGE mode in neutral zone', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 0,
-          lastMode: BATTERY_MODE.CHARGE, // Not a normal mode
-          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-        });
-
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Defaults
-      });
-    });
-
-    describe('Custom thresholds', () => {
-      it('should respect custom solar threshold', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: -400,
-          thresholds: { solarThreshold: -500, consumptionThreshold: 300 },
-        });
-
-        // -400 is above -500 threshold, so not solar excess
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
-      });
-
-      it('should respect custom consumption threshold', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        const result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 250,
-          thresholds: { solarThreshold: -300, consumptionThreshold: 400 },
-        });
-
-        // 250 is below 400 threshold, so not grid consumption
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Defaults in neutral
+        expect(result.reason).toContain('CONSTANT');
       });
     });
 
@@ -500,7 +369,7 @@ describe('strategy-execution-core', () => {
         });
 
         expect(result.mode).not.toBe(BATTERY_MODE.CHARGE);
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Defaults to hold
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT); // Defaults to constant
       });
 
       it('should handle missing dischargeIntervals in strategy', () => {
@@ -514,7 +383,7 @@ describe('strategy-execution-core', () => {
           strategy,
         });
 
-        expect(result.mode).not.toBe(BATTERY_MODE.DISCHARGE);
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
       });
 
       it('should handle undefined gridPower', () => {
@@ -529,7 +398,7 @@ describe('strategy-execution-core', () => {
           gridPower: undefined,
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Defaults to 0, neutral zone
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
       });
 
       it('should handle 30-minute intervals', () => {
@@ -602,7 +471,7 @@ describe('strategy-execution-core', () => {
           gridPower: 2000, // High consumption
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.DISCHARGE);
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
         expect(result.intervalIndex).toBe(73);
       });
 
@@ -618,44 +487,8 @@ describe('strategy-execution-core', () => {
           gridPower: -3000, // Strong solar export
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_SOLAR);
-        expect(result.reason).toContain('Solar excess');
-      });
-
-      it('should prevent oscillation when grid power fluctuates', () => {
-        const priceCache = createPriceCache();
-        const strategy = createStrategy([], []);
-        const now = new Date('2024-01-15T12:00:00.000Z');
-
-        // First call: grid consumption
-        let result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 350,
-          lastMode: null,
-        });
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD);
-
-        // Second call: slight fluctuation into neutral zone
-        result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: 250, // Now in neutral zone
-          lastMode: result.mode,
-        });
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Maintained
-
-        // Third call: more fluctuation
-        result = decideBatteryMode({
-          now,
-          priceCache,
-          strategy,
-          gridPower: -250, // Still neutral
-          lastMode: result.mode,
-        });
-        expect(result.mode).toBe(BATTERY_MODE.NORMAL_HOLD); // Still maintained
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
+        expect(result.reason).toContain('CONSTANT');
       });
     });
   });

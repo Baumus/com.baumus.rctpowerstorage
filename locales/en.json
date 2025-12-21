@@ -20,12 +20,15 @@
     "no_data": "No price data",
     "no_expensive_periods": "No expensive periods found",
     "no_cheap_slots": "No cheap time slots available",
-    "discharging": "Discharging"
+    "discharging": "Discharging",
+
+    "grid_charging": "Grid charging",
+    "battery_use_enabled": "Battery use enabled",
+    "solar_charging": "Solar charging (no discharge)"
   },
   "timeline": {
     "charging": "Battery charging from grid",
-    "discharging": "Battery discharging to grid",
-    "normal_solar": "Battery charging from solar excess",
-    "normal_hold": "Battery discharge disabled"
+    "normal": "Battery normal mode (solar → battery → grid)",
+    "constant": "Battery discharge disabled"
   }
 }

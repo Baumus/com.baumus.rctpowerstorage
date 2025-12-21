@@ -8,10 +8,9 @@
 
 // Battery modes
 const BATTERY_MODE = {
-  CHARGE: 'CHARGE', // Grid charging active
-  DISCHARGE: 'DISCHARGE', // Discharging to grid (expensive interval)
-  NORMAL_SOLAR: 'NORMAL_SOLAR', // Normal mode with solar excess
-  NORMAL_HOLD: 'NORMAL_HOLD', // Hold mode (prevent discharge during grid consumption)
+  CHARGE: 'CHARGE', // Charge from grid active
+  NORMAL: 'NORMAL', // Feed house load from 1st solar, 2nd battery, 3rd grid
+  CONSTANT: 'CONSTANT', // Prevent battery discharge (solar excess still charges battery)
   IDLE: 'IDLE', // No action needed
 };
 
@@ -159,15 +158,8 @@ function decideBatteryMode(params) {
     const hasPlannedGridCharge = Number.isFinite(plannedGridEnergyKWh) && plannedGridEnergyKWh > EPS_KWH;
     const hasPlannedSolarCharge = Number.isFinite(plannedSolarEnergyKWh) && plannedSolarEnergyKWh > EPS_KWH;
 
-    if (isLowSoc && !hasPlannedGridCharge) {
-      return {
-        mode: BATTERY_MODE.NORMAL_SOLAR,
-        intervalIndex: currentIntervalIndex,
-        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR to store solar excess`,
-      };
-    }
-
     // Battery_Mode.CHARGE must only be used for charging from grid.
+    // Backwards compatibility: if the strategy doesn't specify sources, assume it is a grid-charge slot.
     if (hasPlannedGridCharge || (!hasPlannedSolarCharge && !hasPlannedGridCharge)) {
       return {
         mode: BATTERY_MODE.CHARGE,
@@ -176,33 +168,12 @@ function decideBatteryMode(params) {
       };
     }
 
-    // Planned solar-excess charging: decide between NORMAL_SOLAR and NORMAL_HOLD by gridPower thresholds.
-    const { solarThreshold, consumptionThreshold } = thresholds;
-
-    if (gridPower < solarThreshold) {
-      return {
-        mode: BATTERY_MODE.NORMAL_SOLAR,
-        intervalIndex: currentIntervalIndex,
-        reason: `Planned solar charge: solar excess detected (${gridPower.toFixed(0)} W < ${solarThreshold} W)`,
-      };
-    }
-
-    if (gridPower > consumptionThreshold) {
-      return {
-        mode: BATTERY_MODE.NORMAL_HOLD,
-        intervalIndex: currentIntervalIndex,
-        reason: `Planned solar charge: Grid consumption (${gridPower.toFixed(0)} W > ${consumptionThreshold} W)`,
-      };
-    }
-
-    const maintainedMode = lastMode === BATTERY_MODE.NORMAL_SOLAR || lastMode === BATTERY_MODE.NORMAL_HOLD
-      ? lastMode
-      : BATTERY_MODE.NORMAL_HOLD;
-
+    // Planned solar-only charging: no special mode needed.
+    // In CONSTANT, solar excess is still stored automatically while discharge is prevented.
     return {
-      mode: maintainedMode,
+      mode: BATTERY_MODE.CONSTANT,
       intervalIndex: currentIntervalIndex,
-      reason: `Planned solar charge: neutral zone (${gridPower.toFixed(0)} W), maintaining ${maintainedMode}`,
+      reason: `Planned solar-only charge (no grid charge planned) → CONSTANT to prevent discharge`,
     };
   }
 
@@ -210,56 +181,25 @@ function decideBatteryMode(params) {
   if (shouldDischarge) {
     if (isLowSoc) {
       return {
-        mode: BATTERY_MODE.NORMAL_SOLAR,
+        mode: BATTERY_MODE.CONSTANT,
         intervalIndex: currentIntervalIndex,
-        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR (discharge blocked anyway)`,
+        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → CONSTANT to prevent discharge`,
       };
     }
     return {
-      mode: BATTERY_MODE.DISCHARGE,
+      mode: BATTERY_MODE.NORMAL,
       intervalIndex: currentIntervalIndex,
       reason: `Planned discharge interval (price: ${priceCache[currentIntervalIndex]?.total?.toFixed(4)} €/kWh)`,
     };
   }
 
-  // Priority 3: Normal interval - decide based on grid power with hysteresis
-  const { solarThreshold, consumptionThreshold } = thresholds;
-
-  if (isLowSoc) {
-    return {
-      mode: BATTERY_MODE.NORMAL_SOLAR,
-      intervalIndex: currentIntervalIndex,
-      reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → force NORMAL_SOLAR to store solar excess`,
-    };
-  }
-
-  if (gridPower < solarThreshold) {
-    // Significant solar excess → allow battery charging and discharging
-    return {
-      mode: BATTERY_MODE.NORMAL_SOLAR,
-      intervalIndex: currentIntervalIndex,
-      reason: `Solar excess detected (${gridPower.toFixed(0)} W < ${solarThreshold} W)`,
-    };
-  }
-
-  if (gridPower > consumptionThreshold) {
-    // Consuming from grid → prevent battery discharge
-    return {
-      mode: BATTERY_MODE.NORMAL_HOLD, // as quick fix until HOLD mode is implemented correctly
-      intervalIndex: currentIntervalIndex,
-      reason: `Grid consumption (${gridPower.toFixed(0)} W > ${consumptionThreshold} W)`,
-    };
-  }
-
-  // In neutral zone (between thresholds) → keep current mode to prevent oscillation
-  const maintainedMode = lastMode === BATTERY_MODE.NORMAL_SOLAR || lastMode === BATTERY_MODE.NORMAL_HOLD
-    ? lastMode
-    : BATTERY_MODE.NORMAL_HOLD;
-
+  // Priority 3: Default interval
+  // With SOCStrategy.CONSTANT optimized to still store solar excess, we can keep the inverter
+  // in CONSTANT whenever we're not explicitly charging from grid or allowing discharge.
   return {
-    mode: maintainedMode,
+    mode: BATTERY_MODE.CONSTANT,
     intervalIndex: currentIntervalIndex,
-    reason: `Neutral zone (${gridPower.toFixed(0)} W), maintaining ${maintainedMode}`,
+    reason: `Default interval (gridPower ${Number.isFinite(gridPower) ? gridPower.toFixed(0) : 'n/a'} W) → CONSTANT to prevent discharge`,
   };
 }
 
