@@ -151,5 +151,8 @@
   },
   "4.3.5": {
     "en": "fix: battery mode settings"
+  },
+  "4.3.6": {
+    "en": "fix: code optimization"
   }
 }
