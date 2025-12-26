@@ -154,5 +154,8 @@
   },
   "4.3.6": {
     "en": "fix: code optimization"
+  },
+  "4.3.7": {
+    "en": "fix: inverter management"
   }
 }
