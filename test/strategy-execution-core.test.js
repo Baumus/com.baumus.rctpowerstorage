@@ -179,6 +179,95 @@ describe('strategy-execution-core', () => {
         expect(result.reason).toContain('Planned solar-only charge');
       });
 
+      it('should decide NORMAL for a solar-only planned charge interval when PV is active', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedSolarEnergyKWh: 1.2, plannedGridEnergyKWh: 0 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: -200,
+          solarProductionW: 120,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.intervalIndex).toBe(4);
+        expect(result.reason).toContain('PV');
+        expect(result.reason).toContain('NORMAL');
+      });
+
+      it('should decide NORMAL when PV is active and exporting beyond solarThreshold', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 200,
+          gridPower: -500,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.CONSTANT,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.reason).toContain('exporting');
+      });
+
+      it('should decide CONSTANT when PV is active and importing beyond consumptionThreshold', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 200,
+          gridPower: 500,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.NORMAL,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
+        expect(result.reason).toContain('importing');
+      });
+
+      it('should keep lastMode within deadband when PV is active (hysteresis)', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
+
+        const resultKeepNormal = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 200,
+          gridPower: 0,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.NORMAL,
+        });
+        expect(resultKeepNormal.mode).toBe(BATTERY_MODE.NORMAL);
+
+        const resultKeepConstant = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 200,
+          gridPower: 0,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.CONSTANT,
+        });
+        expect(resultKeepConstant.mode).toBe(BATTERY_MODE.CONSTANT);
+      });
+
       it('should decide CONSTANT for a solar-only planned charge interval even when consuming', () => {
         const priceCache = createPriceCache();
         const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
@@ -275,7 +364,7 @@ describe('strategy-execution-core', () => {
         expect(result.reason).toContain('Planned discharge interval');
       });
 
-      it('should force CONSTANT when SoC is at/below min threshold (discharge blocked)', () => {
+      it('should allow NORMAL when SoC is at/below min threshold (battery blocks further discharge)', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], [20, 21]);
         const now = new Date('2024-01-15T05:00:00.000Z'); // Index 20
@@ -289,7 +378,7 @@ describe('strategy-execution-core', () => {
           minSocThresholdPercent: 7.0,
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
         expect(result.intervalIndex).toBe(20);
         expect(result.reason).toContain('Low SoC');
       });

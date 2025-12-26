@@ -4,7 +4,7 @@ This repo uses Jest to test the extracted (mostly pure) energy-optimizer logic a
 
 ## Quick Start
 
-Prerequisite: Node.js `>=16.0.0` (see `package.json`).
+Prerequisite: Node.js `>=22.0.0` (see `package.json`).
 
 ```bash
 npm install
@@ -114,7 +114,7 @@ node tools/simulate-optimizer.js
 
 1) Install deps: `npm install`
 
-2) Check Node version: `node --version` (must satisfy `>=16`)
+2) Check Node version: `node --version` (must satisfy `>=22`)
 
 3) Clear Jest cache:
 

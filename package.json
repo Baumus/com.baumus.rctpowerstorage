@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "app.js",
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
     "test": "jest",
     "test:watch": "jest --watch",

@@ -51,6 +51,7 @@ function hasModeChanged(newMode, lastMode) {
  * @param {Array} params.priceCache - Array of price intervals with startsAt
  * @param {Object} params.strategy - Current optimization strategy
  * @param {number} params.gridPower - Current grid power in W (negative = solar export)
+ * @param {number} params.solarProductionW - Current solar production power in W (>= 0)
  * @param {string} params.lastMode - Previous battery mode for hysteresis
  * @param {Object} params.thresholds - Grid power thresholds
  * @param {number} params.intervalMinutes - Interval duration (default 15)
@@ -62,6 +63,7 @@ function decideBatteryMode(params) {
     priceCache,
     strategy,
     gridPower = 0,
+    solarProductionW = null,
     lastMode = null,
     currentSocPercent = null,
     minSocThresholdPercent = null,
@@ -123,6 +125,10 @@ function decideBatteryMode(params) {
     && (typeof minSocThresholdPercent === 'number' && Number.isFinite(minSocThresholdPercent))
     && currentSocPercent <= minSocThresholdPercent;
 
+  const SOLAR_START_THRESHOLD_W = 50;
+  const isSolarActive = (typeof solarProductionW === 'number' && Number.isFinite(solarProductionW))
+    && solarProductionW > SOLAR_START_THRESHOLD_W;
+
   // Priority 1: Charge interval
   if (shouldCharge) {
     const EPS_KWH = 0.001;
@@ -169,11 +175,18 @@ function decideBatteryMode(params) {
     }
 
     // Planned solar-only charging: no special mode needed.
-    // In CONSTANT, solar excess is still stored automatically while discharge is prevented.
+    // Real-world behavior can differ by inverter/firmware; ensure PV can start/run by allowing NORMAL when PV is active.
+    if (isSolarActive) {
+      return {
+        mode: BATTERY_MODE.NORMAL,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned solar-only charge (PV ${solarProductionW.toFixed(0)} W > ${SOLAR_START_THRESHOLD_W} W) → NORMAL to ensure PV operation`,
+      };
+    }
     return {
       mode: BATTERY_MODE.CONSTANT,
       intervalIndex: currentIntervalIndex,
-      reason: `Planned solar-only charge (no grid charge planned) → CONSTANT to prevent discharge`,
+      reason: 'Planned solar-only charge (no grid charge planned) → CONSTANT to prevent discharge',
     };
   }
 
@@ -181,9 +194,9 @@ function decideBatteryMode(params) {
   if (shouldDischarge) {
     if (isLowSoc) {
       return {
-        mode: BATTERY_MODE.CONSTANT,
+        mode: BATTERY_MODE.NORMAL,
         intervalIndex: currentIntervalIndex,
-        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → CONSTANT to prevent discharge`,
+        reason: `Low SoC (${currentSocPercent.toFixed(1)}% <= ${minSocThresholdPercent.toFixed(1)}%) → NORMAL (battery will not discharge below threshold)`,
       };
     }
     return {
@@ -194,8 +207,46 @@ function decideBatteryMode(params) {
   }
 
   // Priority 3: Default interval
-  // With SOCStrategy.CONSTANT optimized to still store solar excess, we can keep the inverter
-  // in CONSTANT whenever we're not explicitly charging from grid or allowing discharge.
+  // When PV is active, switch between NORMAL and CONSTANT based on gridPower thresholds
+  // to avoid feeding excess solar into the grid while still preventing discharge when importing.
+  if (isSolarActive) {
+    const hasGridPower = typeof gridPower === 'number' && Number.isFinite(gridPower);
+    const solarThreshold = (thresholds && Number.isFinite(thresholds.solarThreshold)) ? thresholds.solarThreshold : -300;
+    const consumptionThreshold = (thresholds && Number.isFinite(thresholds.consumptionThreshold)) ? thresholds.consumptionThreshold : 300;
+
+    if (hasGridPower && gridPower <= solarThreshold) {
+      return {
+        mode: BATTERY_MODE.NORMAL,
+        intervalIndex: currentIntervalIndex,
+        reason: `PV active (${solarProductionW.toFixed(0)} W) and exporting (gridPower ${gridPower.toFixed(0)} W <= ${solarThreshold} W) → NORMAL to reduce feed-in`,
+      };
+    }
+
+    if (hasGridPower && gridPower >= consumptionThreshold) {
+      return {
+        mode: BATTERY_MODE.CONSTANT,
+        intervalIndex: currentIntervalIndex,
+        reason: `PV active (${solarProductionW.toFixed(0)} W) and importing (gridPower ${gridPower.toFixed(0)} W >= ${consumptionThreshold} W) → CONSTANT to prevent discharge`,
+      };
+    }
+
+    // Hysteresis/deadband: keep last mode to avoid flapping.
+    if (lastMode === BATTERY_MODE.NORMAL || lastMode === BATTERY_MODE.CONSTANT) {
+      return {
+        mode: lastMode,
+        intervalIndex: currentIntervalIndex,
+        reason: `PV active (${solarProductionW.toFixed(0)} W) and gridPower within deadband → keep ${lastMode}`,
+      };
+    }
+
+    return {
+      mode: BATTERY_MODE.NORMAL,
+      intervalIndex: currentIntervalIndex,
+      reason: `PV active (${solarProductionW.toFixed(0)} W) → NORMAL (no prior mode for hysteresis)`,
+    };
+  }
+
+  // No PV signal available or PV not active: keep safe default (prevent discharge).
   return {
     mode: BATTERY_MODE.CONSTANT,
     intervalIndex: currentIntervalIndex,

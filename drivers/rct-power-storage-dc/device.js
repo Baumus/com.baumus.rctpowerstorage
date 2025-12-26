@@ -269,11 +269,10 @@ class MyDevice extends RCTDevice {
     try {
       await this.ensureConnection({ throwOnError: true });
       // Set the inverter to disable battery discharge mode
-      await this.conn.write(Identifier.POWER_MNG_SOC_STRATEGY, SOCStrategy.CONSTANT);
-      await this.setCapSOCStrategy(SOCStrategy.toString(SOCStrategy.CONSTANT));
+      await this.conn.write(Identifier.POWER_MNG_SOC_STRATEGY, SOCStrategy.EXTERNAL);
+      await this.setCapSOCStrategy(SOCStrategy.toString(SOCStrategy.EXTERNAL));
       await this.conn.write(Identifier.POWER_MNG_BATTERY_POWER_EXTERN_W, 0);
-      await this.conn.write(Identifier.POWER_MNG_USE_GRID_POWER_ENABLE, false);
-      await this.conn.write(Identifier.POWER_MNG_SOC_TARGET_SET, 0.97); // Set target SOC to 97%
+      await this.conn.write(Identifier.POWER_MNG_USE_GRID_POWER_ENABLE, true);
     } catch (error) {
       this.log('Error setting disable battery discharge mode:', error);
       if (this.conn) {
