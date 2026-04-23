@@ -157,5 +157,8 @@
   },
   "4.3.7": {
     "en": "fix: inverter management"
+  },
+  "4.3.8": {
+    "en": "fix: battery management"
   }
 }
