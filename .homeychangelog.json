@@ -160,5 +160,8 @@
   },
   "4.3.8": {
     "en": "fix: battery management"
+  },
+  "4.3.9": {
+    "en": "Refactor battery cost calculation and optimize strategy logic"
   }
 }
