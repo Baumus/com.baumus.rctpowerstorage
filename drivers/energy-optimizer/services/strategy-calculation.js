@@ -23,18 +23,66 @@ try {
   // LP solver not available
 }
 
+function serializeStrategyInput(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toFixed(6) : String(value);
+  }
+
+  if (typeof value === 'string' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => serializeStrategyInput(entry)).join(',')}]`;
+  }
+
+  if (typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${key}:${serializeStrategyInput(value[key])}`).join(',')}}`;
+  }
+
+  return String(value);
+}
+
 function getStrategyInputHash(host) {
   const batteryDeviceId = host.getSettingOrDefault('battery_device_id', '');
   const batteryDevice = host.getDeviceById('rct-power-storage-dc', batteryDeviceId);
   const socValue = host.getCapabilitySafe(batteryDevice, 'measure_battery');
-  const soc = socValue !== null ? Math.round(socValue) : 0;
+  const soc = Number.isFinite(socValue) ? socValue : 0;
 
-  const priceLen = host.priceCache ? host.priceCache.length : 0;
+  const nowQuarterBucket = Math.floor(Date.now() / (INTERVAL_MINUTES * 60 * 1000));
+  const priceSignature = serializeStrategyInput(
+    Array.isArray(host.priceCache)
+      ? host.priceCache.map((entry) => ({ startsAt: entry.startsAt, total: entry.total }))
+      : [],
+  );
   const targetSoc = host.normalizedTargetSoc || 0;
   const chargePower = host.normalizedChargePowerKW || 0;
   const effLoss = host.normalizedEfficiencyLoss || 0;
+  const batteryCapacity = parseFloat(batteryDevice?.getSetting('battery_capacity')) || DEFAULT_BATTERY_CAPACITY_KWH;
+  const minSocThreshold = Number(host.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD)) || 0;
+  const minProfitCent = Number(host.getSettingOrDefault('min_profit_cent_per_kwh', DEFAULT_MIN_PROFIT_CENT_PER_KWH)) || 0;
+  const productionHistory = serializeStrategyInput(host.productionHistory || {});
+  const consumptionHistory = serializeStrategyInput(host.consumptionHistory || {});
+  const batteryHistory = serializeStrategyInput(host.batteryHistory || {});
 
-  return `${priceLen}:${soc}:${targetSoc}:${chargePower}:${effLoss}`;
+  return [
+    nowQuarterBucket,
+    soc.toFixed(2),
+    targetSoc,
+    chargePower,
+    effLoss,
+    batteryCapacity,
+    minSocThreshold,
+    minProfitCent,
+    priceSignature,
+    productionHistory,
+    consumptionHistory,
+    batteryHistory,
+  ].join('|');
 }
 
 /**

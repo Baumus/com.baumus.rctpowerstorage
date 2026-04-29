@@ -278,6 +278,50 @@ describe('LP Optimizer Logic', () => {
       expect(result.dischargeIntervals[0].index).toBe(3);
     });
 
+    test('builds solar-dominated planned charging details from LP result', () => {
+      mockLpSolver.Solve.mockReturnValue({
+        totalCost: -0.2,
+        feasible: true,
+        sc_0: 0.6,
+        c_1: 0.4,
+        d1_2: 0.8,
+        s_0: 2.54,
+        s_1: 2.90,
+        s_2: 2.01,
+        e_0: 2.0,
+        e_1: 2.0,
+        e_2: 2.0,
+      });
+
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T10:00:00Z', total: 0.22, intervalOfDay: 40 },
+        { index: 1, startsAt: '2025-01-01T10:15:00Z', total: 0.18, intervalOfDay: 41 },
+        { index: 2, startsAt: '2025-01-01T18:00:00Z', total: 0.32, intervalOfDay: 72 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.2,
+        targetSoc: 0.8,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+      };
+
+      const result = optimizeStrategyWithLp(indexedData, params, mockHistory, { lpSolver: mockLpSolver });
+
+      expect(result).not.toBeNull();
+      expect(result.chargeIntervals).toHaveLength(2);
+      expect(result.chargeDisplayEntries).toHaveLength(2);
+      expect(result.chargeDisplayEntries[0].plannedSymbol).toBe('☀️');
+      expect(result.chargeDisplayEntries[0].plannedPriceEurPerKWh).toBeCloseTo(0.07, 6);
+      expect(result.chargeDisplayEntries[1].plannedSymbol).toBe('⚡');
+      expect(result.plannedCharging.solarEnergyKWh).toBeCloseTo(0.6, 6);
+      expect(result.plannedCharging.gridEnergyKWh).toBeCloseTo(0.4, 6);
+      expect(result.plannedCharging.totalCostEur).toBeCloseTo((0.6 * 0.07) + (0.4 * 0.18), 6);
+      expect(result.plannedCharging.avgPriceEurPerKWh).toBeCloseTo((((0.6 * 0.07) + (0.4 * 0.18)) / 1.0), 6);
+    });
+
     test('returns null when battery at target and empty', () => {
       const indexedData = [
         { index: 0, startsAt: '2025-01-01T00:00:00Z', total: 0.10, intervalOfDay: 0 },

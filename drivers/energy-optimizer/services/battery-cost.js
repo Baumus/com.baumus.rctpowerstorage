@@ -5,6 +5,57 @@
  * Host-based service module: operates on the EnergyOptimizerDevice instance.
  */
 
+function getPlannedUnknownAvgPrice(host) {
+  const avgPlannedPrice = host.currentStrategy?.plannedCharging?.avgPriceEurPerKWh;
+  if (Number.isFinite(avgPlannedPrice) && avgPlannedPrice >= 0) {
+    return avgPlannedPrice;
+  }
+
+  const chargeEntries = Array.isArray(host.currentStrategy?.chargeDisplayEntries)
+    ? host.currentStrategy.chargeDisplayEntries
+    : [];
+
+  if (chargeEntries.length > 0) {
+    const totals = chargeEntries.reduce((acc, entry) => {
+      const plannedEnergyKWh = Number.isFinite(entry.plannedEnergyKWh) ? entry.plannedEnergyKWh : 0;
+      const plannedCostEur = Number.isFinite(entry.plannedCostEur)
+        ? entry.plannedCostEur
+        : plannedEnergyKWh * (Number.isFinite(entry.plannedPriceEurPerKWh) ? entry.plannedPriceEurPerKWh : 0);
+
+      return {
+        energyKWh: acc.energyKWh + plannedEnergyKWh,
+        costEur: acc.costEur + plannedCostEur,
+      };
+    }, { energyKWh: 0, costEur: 0 });
+
+    if (totals.energyKWh > 0.01) {
+      return totals.costEur / totals.energyKWh;
+    }
+  }
+
+  if (host.currentStrategy?.chargeIntervals && host.currentStrategy.chargeIntervals.length > 0) {
+    const totals = host.currentStrategy.chargeIntervals.reduce((acc, interval) => {
+      const plannedGridEnergyKWh = Number.isFinite(interval.plannedGridEnergyKWh) ? interval.plannedGridEnergyKWh : 0;
+      const plannedSolarEnergyKWh = Number.isFinite(interval.plannedSolarEnergyKWh) ? interval.plannedSolarEnergyKWh : 0;
+      const plannedEnergyKWh = Number.isFinite(interval.plannedEnergyKWh)
+        ? interval.plannedEnergyKWh
+        : plannedGridEnergyKWh + plannedSolarEnergyKWh;
+      const plannedCostEur = (plannedGridEnergyKWh * (Number.isFinite(interval.total) ? interval.total : 0));
+
+      return {
+        energyKWh: acc.energyKWh + plannedEnergyKWh,
+        costEur: acc.costEur + plannedCostEur,
+      };
+    }, { energyKWh: 0, costEur: 0 });
+
+    if (totals.energyKWh > 0.01) {
+      return totals.costEur / totals.energyKWh;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Estimate battery energy cost when charge log is unavailable.
  * Mirrors the previous `EnergyOptimizerDevice.estimateBatteryEnergyCost()` behavior.
@@ -21,11 +72,11 @@ function estimateBatteryEnergyCost(host, currentSoc, batteryCapacity) {
     // Determine default price for unknown energy source
     let estimatedPrice = 0.20; // Fallback: typical German electricity price
 
-    // Option 1: Use average price from planned charge intervals (best estimate)
-    if (host.currentStrategy?.chargeIntervals && host.currentStrategy.chargeIntervals.length > 0) {
-      const sum = host.currentStrategy.chargeIntervals.reduce((acc, interval) => acc + (interval.total || 0), 0);
-      estimatedPrice = sum / host.currentStrategy.chargeIntervals.length;
-      host.log(`   Using avg planned charge price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
+    // Option 1: Use backend-computed planned charging price (best estimate)
+    const plannedUnknownAvgPrice = getPlannedUnknownAvgPrice(host);
+    if (Number.isFinite(plannedUnknownAvgPrice)) {
+      estimatedPrice = plannedUnknownAvgPrice;
+      host.log(`   Using planned charging avg price as estimate: ${estimatedPrice.toFixed(4)} €/kWh`);
 
     // Option 2: Use average of recent price data
     } else if (host.priceCache && host.priceCache.length > 0) {
@@ -120,9 +171,9 @@ function combineBatteryCost(host, tracked, totalKWh, batteryCapacity) {
   // Estimate the unknown portion
   let unknownAvgPrice = 0.20; // Fallback
 
-  if (host.currentStrategy?.chargeIntervals && host.currentStrategy.chargeIntervals.length > 0) {
-    const sum = host.currentStrategy.chargeIntervals.reduce((acc, interval) => acc + (interval.total || 0), 0);
-    unknownAvgPrice = sum / host.currentStrategy.chargeIntervals.length;
+  const plannedUnknownAvgPrice = getPlannedUnknownAvgPrice(host);
+  if (Number.isFinite(plannedUnknownAvgPrice)) {
+    unknownAvgPrice = plannedUnknownAvgPrice;
   } else if (host.priceCache && host.priceCache.length > 0) {
     const recentPrices = host.priceCache.slice(0, Math.min(96, host.priceCache.length));
     const sum = recentPrices.reduce((acc, p) => acc + (p.total || 0), 0);

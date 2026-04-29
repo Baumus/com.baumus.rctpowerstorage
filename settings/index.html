@@ -578,11 +578,52 @@
             
             document.getElementById('statusContainer').innerHTML = html;
         }
+
+        const DISPLAY_TIME_ZONE = 'Europe/Berlin';
+
+        function formatDisplayTime(value, locale = 'en-GB') {
+            return new Date(value).toLocaleTimeString(locale, {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: DISPLAY_TIME_ZONE,
+            });
+        }
+
+        function formatDisplayDate(value, locale = 'en-GB') {
+            return new Date(value).toLocaleDateString(locale, {
+                month: 'short',
+                day: 'numeric',
+                timeZone: DISPLAY_TIME_ZONE,
+            });
+        }
+
+        function formatDisplayDateTime(value, locale = 'de-DE') {
+            return new Date(value).toLocaleString(locale, {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: DISPLAY_TIME_ZONE,
+            });
+        }
+
+        function getDischargeIntervals(strategy) {
+            if (Array.isArray(strategy?.dischargeIntervals) && strategy.dischargeIntervals.length > 0) {
+                return strategy.dischargeIntervals;
+            }
+
+            if (Array.isArray(strategy?.expensiveIntervals) && strategy.expensiveIntervals.length > 0) {
+                return strategy.expensiveIntervals;
+            }
+
+            return [];
+        }
         
         function renderStats(device, strategy) {
             const savings = device.capabilities?.estimated_savings || 0;
             const chargeIntervals = strategy.chargeIntervals?.length || 0;
-            const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
+            const expensiveIntervals = getDischargeIntervals(strategy).length;
             const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
             const neededKWh = strategy.neededKWh ? strategy.neededKWh.toFixed(2) : '-';
             
@@ -662,7 +703,7 @@
                 (strategy?.chargeIntervals || []).map(s => s.startsAt)
             );
             const expensiveTimestamps = new Set(
-                (strategy?.expensiveIntervals || []).map(s => s.startsAt)
+                getDischargeIntervals(strategy).map(s => s.startsAt)
             );
             
             console.log('Strategy info:', {
@@ -702,7 +743,7 @@
                     barClass += ' expensive';
                 }
                 
-                html += `<div class="${barClass}" style="height: ${normalizedHeight}%" title="${new Date(priceData.startsAt).toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'})}: €${priceData.total.toFixed(4)}/kWh"></div>`;
+                html += `<div class="${barClass}" style="height: ${normalizedHeight}%" title="${formatDisplayTime(priceData.startsAt)}: €${priceData.total.toFixed(4)}/kWh"></div>`;
             });
             
             chartBars.innerHTML = html;
@@ -727,13 +768,11 @@
             let xAxisHtml = '';
             const timeLabels = [];
             for (let i = 0; i < availableIntervals.length; i += 24) {
-                const time = new Date(availableIntervals[i].startsAt);
-                timeLabels.push(time.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+                timeLabels.push(formatDisplayTime(availableIntervals[i].startsAt));
             }
             // Add last label
             if (availableIntervals.length > 0) {
-                const lastTime = new Date(availableIntervals[availableIntervals.length - 1].startsAt);
-                timeLabels.push(lastTime.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+                timeLabels.push(formatDisplayTime(availableIntervals[availableIntervals.length - 1].startsAt));
             }
             
             xAxisHtml = timeLabels.map(label => `<span>${label}</span>`).join('');
@@ -747,8 +786,12 @@
                 if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
                 return value.toFixed(digits);
             };
+
+            const dischargeIntervals = getDischargeIntervals(strategy);
+            const hasChargeIntervals = !!(strategy?.chargeIntervals && strategy.chargeIntervals.length > 0);
+            const hasBatteryStatus = !!strategy?.batteryStatus;
             
-            if (!strategy || (!strategy.chargeIntervals && !strategy.expensiveIntervals)) {
+            if (!strategy || (!hasChargeIntervals && dischargeIntervals.length === 0 && !hasBatteryStatus)) {
                 container.innerHTML = '<div class="no-data">No optimization plan available</div>';
                 return;
             }
@@ -870,14 +913,7 @@
             if (chargeEntries.length > 0 || (strategy.chargeIntervals && strategy.chargeIntervals.length > 0)) {
                 // Debug: Show first charge interval info
                 const firstInterval = (chargeEntries[0] || strategy.chargeIntervals[0]);
-                const firstTime = new Date(firstInterval.startsAt);
-                const firstTimeStr = firstTime.toLocaleString('de-DE', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
+                const firstTimeStr = formatDisplayDateTime(firstInterval.startsAt);
                 
                 html += `
                     <div class="status-item active" style="margin-bottom: 16px;">
@@ -892,9 +928,8 @@
                 const displayEntries = (chargeEntries.length > 0 ? chargeEntries : strategy.chargeIntervals).slice(0, 12);
 
                 displayEntries.forEach(entry => {
-                    const time = new Date(entry.startsAt);
-                    const timeStr = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                    const dateStr = time.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+                    const timeStr = formatDisplayTime(entry.startsAt);
+                    const dateStr = formatDisplayDate(entry.startsAt);
 
                     const symbol = entry.plannedSymbol || '⚡';
                     const plannedKWh = (typeof entry.plannedEnergyKWh === 'number' && Number.isFinite(entry.plannedEnergyKWh))
@@ -937,7 +972,6 @@
             }
             
             // Expensive intervals (discharge)
-            const dischargeIntervals = strategy.dischargeIntervals || strategy.expensiveIntervals || [];
             if (dischargeIntervals.length > 0) {
                 html += '<div class="section-title">⚠️ Expensive Periods (Use Battery)</div>';
                 html += '<div class="timeline">';
@@ -945,9 +979,8 @@
                 const displayIntervals = dischargeIntervals.slice(0, 12);
                 
                 displayIntervals.forEach(interval => {
-                    const time = new Date(interval.startsAt);
-                    const timeStr = time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                    const dateStr = time.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+                    const timeStr = formatDisplayTime(interval.startsAt);
+                    const dateStr = formatDisplayDate(interval.startsAt);
                     const price = interval.total.toFixed(4);
                     const demand = interval.demandKWh || 0;
                     

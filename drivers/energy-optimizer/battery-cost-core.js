@@ -2,13 +2,13 @@
 
 /**
  * Battery cost calculation logic - pure functions for tracking battery energy costs
- * This module handles FIFO (First In, First Out) tracking of battery charge/discharge
+ * This module tracks charge/discharge using proportional composition accounting.
  * events to calculate the average cost of energy currently stored in the battery.
  */
 
 /**
  * Calculate the average cost and composition of energy currently in battery
- * Uses FIFO accounting to track solar vs grid energy and associated costs
+ * Uses proportional accounting to track solar vs grid energy and associated costs
  *
  * @param {Array} chargeLog - Array of charge/discharge events
  * @param {Object} options - Optional configuration

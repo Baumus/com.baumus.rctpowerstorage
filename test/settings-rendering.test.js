@@ -5,6 +5,47 @@ const {
   createChargeEntry,
 } = require('../drivers/energy-optimizer/battery-cost-core');
 
+function getDischargeIntervals(strategy = {}) {
+  if (Array.isArray(strategy.dischargeIntervals) && strategy.dischargeIntervals.length > 0) {
+    return strategy.dischargeIntervals;
+  }
+
+  if (Array.isArray(strategy.expensiveIntervals) && strategy.expensiveIntervals.length > 0) {
+    return strategy.expensiveIntervals;
+  }
+
+  return [];
+}
+
+const DISPLAY_TIME_ZONE = 'Europe/Berlin';
+
+function formatDisplayTime(value, locale = 'en-GB') {
+  return new Date(value).toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: DISPLAY_TIME_ZONE,
+  });
+}
+
+function formatDisplayDate(value, locale = 'en-GB') {
+  return new Date(value).toLocaleDateString(locale, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: DISPLAY_TIME_ZONE,
+  });
+}
+
+function formatDisplayDateTime(value, locale = 'de-DE') {
+  return new Date(value).toLocaleString(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: DISPLAY_TIME_ZONE,
+  });
+}
+
 /**
  * Settings Page Rendering Tests
  * 
@@ -83,7 +124,7 @@ describe('Settings Page Data Rendering', () => {
 
       const savings = device.capabilities.estimated_savings || 0;
       const chargeIntervals = strategy.chargeIntervals?.length || 0;
-      const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
+      const expensiveIntervals = getDischargeIntervals(strategy).length;
       const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
       const neededKWh = strategy.neededKWh ? strategy.neededKWh.toFixed(2) : '-';
 
@@ -99,12 +140,23 @@ describe('Settings Page Data Rendering', () => {
       const device = { capabilities: {} };
 
       const chargeIntervals = strategy.chargeIntervals?.length || 0;
-      const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
+      const expensiveIntervals = getDischargeIntervals(strategy).length;
       const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
 
       expect(chargeIntervals).toBe(0);
       expect(expensiveIntervals).toBe(0);
       expect(avgPrice).toBe('-');
+    });
+
+    it('should use dischargeIntervals when expensiveIntervals is missing', () => {
+      const strategy = {
+        dischargeIntervals: [
+          { startsAt: '2024-01-16T18:00:00Z', total: 0.32 },
+          { startsAt: '2024-01-16T18:15:00Z', total: 0.34 },
+        ],
+      };
+
+      expect(getDischargeIntervals(strategy)).toHaveLength(2);
     });
   });
 
@@ -191,7 +243,7 @@ describe('Settings Page Data Rendering', () => {
         (strategy.chargeIntervals || []).map(s => s.startsAt)
       );
       const expensiveTimestamps = new Set(
-        (strategy.expensiveIntervals || []).map(s => s.startsAt)
+        getDischargeIntervals(strategy).map(s => s.startsAt)
       );
 
       // Test classification
@@ -223,6 +275,28 @@ describe('Settings Page Data Rendering', () => {
 
       expect(priceCache.length).toBe(0);
       // Should show "No price data available"
+    });
+
+    it('should fall back to expensiveIntervals when dischargeIntervals is empty', () => {
+      const strategy = {
+        dischargeIntervals: [],
+        expensiveIntervals: [
+          { startsAt: '2024-01-15T18:00:00Z' },
+        ],
+      };
+
+      const expensiveTimestamps = new Set(getDischargeIntervals(strategy).map((interval) => interval.startsAt));
+      expect(expensiveTimestamps.has('2024-01-15T18:00:00Z')).toBe(true);
+    });
+
+    it('should format chart labels in Europe/Berlin consistently', () => {
+      const priceCache = [
+        { startsAt: '2024-01-15T22:00:00Z', total: 0.15 },
+        { startsAt: '2024-01-16T04:00:00Z', total: 0.16 },
+      ];
+
+      const labels = priceCache.map((entry) => formatDisplayTime(entry.startsAt));
+      expect(labels).toEqual(['23:00', '05:00']);
     });
   });
 
@@ -266,20 +340,30 @@ describe('Settings Page Data Rendering', () => {
 
     it('should format time and date correctly', () => {
       const isoString = '2024-01-15T22:30:00Z';
-      const date = new Date(isoString);
-
-      // Simulate time formatting
-      const timeStr = date.toLocaleTimeString('en-GB', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-      const dateStr = date.toLocaleDateString('en-GB', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
+      const timeStr = formatDisplayTime(isoString);
+      const dateStr = formatDisplayDate(isoString);
 
       expect(timeStr).toMatch(/^\d{2}:\d{2}$/);
       expect(dateStr).toMatch(/^\d{1,2} \w{3}$/); // Format: "15 Jan"
+    });
+
+    it('should render chart and timeline times in Europe/Berlin', () => {
+      const isoString = '2024-01-15T22:00:00Z';
+
+      const chartTooltipTime = formatDisplayTime(isoString);
+      const timelineTime = formatDisplayTime(isoString);
+      const firstChargeDateTime = formatDisplayDateTime(isoString);
+
+      expect(chartTooltipTime).toBe('23:00');
+      expect(timelineTime).toBe('23:00');
+      expect(firstChargeDateTime).toContain('23:00');
+    });
+
+    it('should render summer timestamps in Europe/Berlin DST', () => {
+      const isoString = '2024-07-15T22:00:00Z';
+
+      expect(formatDisplayTime(isoString)).toBe('00:00');
+      expect(formatDisplayDate(isoString)).toBe('16 Jul');
     });
 
     it('should use backend-provided economics/savings (no UI recomputation)', () => {
@@ -313,11 +397,25 @@ describe('Settings Page Data Rendering', () => {
       const strategy = {};
 
       const hasChargeIntervals = !!(strategy.chargeIntervals && strategy.chargeIntervals.length > 0);
-      const hasExpensiveIntervals = !!(strategy.expensiveIntervals && strategy.expensiveIntervals.length > 0);
+      const hasExpensiveIntervals = getDischargeIntervals(strategy).length > 0;
 
       expect(hasChargeIntervals).toBe(false);
       expect(hasExpensiveIntervals).toBe(false);
       // Should show "No optimization plan available"
+    });
+
+    it('should keep battery-only strategies renderable', () => {
+      const strategy = {
+        batteryStatus: {
+          currentSoc: 0.65,
+        },
+      };
+
+      const hasChargeIntervals = !!(strategy.chargeIntervals && strategy.chargeIntervals.length > 0);
+      const hasDischargeIntervals = getDischargeIntervals(strategy).length > 0;
+      const hasBatteryStatus = !!strategy.batteryStatus;
+
+      expect(hasChargeIntervals || hasDischargeIntervals || hasBatteryStatus).toBe(true);
     });
   });
 

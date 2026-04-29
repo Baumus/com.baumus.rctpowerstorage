@@ -153,6 +153,102 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(secondHash).not.toBe(firstHash);
     });
 
+    it('should recalculate when price values change without changing cache length', async () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 50),
+        getSetting: jest.fn(() => 10),
+      };
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        return def;
+      });
+      optimizer.getSetting = jest.fn((key) => {
+        if (key === 'min_profit_cent_per_kwh') return 8;
+        return undefined;
+      });
+      optimizer.getCapabilitySafe = jest.fn(() => 50);
+      optimizer.getSettings = jest.fn(() => ({
+        battery_capacity: 10,
+        cheap_price_factor: 0.8,
+        expensive_price_factor: 1.2,
+        min_profit_cent_per_kwh: 2,
+        forecast_days: 2,
+      }));
+      optimizer.normalizedChargePowerKW = 5;
+      optimizer.normalizedTargetSoc = 1;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.2;
+      optimizer.productionHistory = {};
+      optimizer.consumptionHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key) };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      await optimizer.calculateOptimalStrategy();
+      const firstHash = optimizer._lastStrategyInputHash;
+
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.35 }];
+      await optimizer.calculateOptimalStrategy();
+
+      expect(optimizer._lastStrategyInputHash).not.toBe(firstHash);
+      expect(optimizer.debug).not.toHaveBeenCalledWith('⏭️ Skipping strategy recalc (no input changes)');
+    });
+
+    it('should recalculate when the quarter-hour bucket advances', async () => {
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 50),
+        getSetting: jest.fn(() => 10),
+      };
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        return def;
+      });
+      optimizer.getSetting = jest.fn((key) => {
+        if (key === 'min_profit_cent_per_kwh') return 8;
+        return undefined;
+      });
+      optimizer.getCapabilitySafe = jest.fn(() => 50);
+      optimizer.getSettings = jest.fn(() => ({
+        battery_capacity: 10,
+        cheap_price_factor: 0.8,
+        expensive_price_factor: 1.2,
+        min_profit_cent_per_kwh: 2,
+        forecast_days: 2,
+      }));
+      optimizer.normalizedChargePowerKW = 5;
+      optimizer.normalizedTargetSoc = 1;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.2;
+      optimizer.productionHistory = {};
+      optimizer.consumptionHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key) };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      await optimizer.calculateOptimalStrategy();
+      const firstHash = optimizer._lastStrategyInputHash;
+
+      jest.advanceTimersByTime(15 * 60 * 1000);
+      await optimizer.calculateOptimalStrategy();
+
+      expect(optimizer._lastStrategyInputHash).not.toBe(firstHash);
+      expect(optimizer.debug).not.toHaveBeenCalledWith('⏭️ Skipping strategy recalc (no input changes)');
+    });
+
     it('should recalculate when force flag is true', async () => {
       const optimizer = new EnergyOptimizerDevice();
       optimizer.log = jest.fn();
@@ -714,14 +810,16 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(combined).toBeNull();
     });
 
-    it('should use planned charge intervals for unknown price estimate', () => {
+    it('should use backend planned charging average for unknown price estimate', () => {
       const optimizer = new EnergyOptimizerDevice();
       optimizer.log = jest.fn();
       optimizer.currentStrategy = {
+        plannedCharging: {
+          avgPriceEurPerKWh: 0.11,
+        },
         chargeIntervals: [
-          { total: 0.12 },
-          { total: 0.14 },
-          { total: 0.16 },
+          { total: 0.25, plannedGridEnergyKWh: 0.4, plannedSolarEnergyKWh: 0.6, plannedEnergyKWh: 1.0 },
+          { total: 0.29, plannedGridEnergyKWh: 0.2, plannedSolarEnergyKWh: 0.8, plannedEnergyKWh: 1.0 },
         ],
       };
 
@@ -735,8 +833,8 @@ describe('EnergyOptimizerDevice resource optimization', () => {
 
       const combined = optimizer.combineBatteryCost(tracked, 6.0, 10.0);
 
-      // Unknown price should be avg of charge intervals: (0.12+0.14+0.16)/3 = 0.14
-      expect(combined.unknownAvgPrice).toBeCloseTo(0.14, 2);
+      // Use backend planned charging economics, not the raw interval spot-price average.
+      expect(combined.unknownAvgPrice).toBeCloseTo(0.11, 2);
       expect(combined.unknownKWh).toBeCloseTo(4.0, 2);
     });
   });
