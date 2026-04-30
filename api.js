@@ -77,6 +77,10 @@ module.exports = {
       // Return strategy and cache data
       return {
         strategy: device.currentStrategy || null,
+        dashboardSummary: typeof device.buildDashboardSummary === 'function'
+          ? device.buildDashboardSummary()
+          : null,
+        savingsHistory: device.savingsHistory || {},
         priceCache: device.priceCache || [],
         productionHistory: device.productionHistory || {},
         consumptionHistory: device.consumptionHistory || {},

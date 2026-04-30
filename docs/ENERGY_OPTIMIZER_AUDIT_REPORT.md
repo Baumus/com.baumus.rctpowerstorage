@@ -5,6 +5,7 @@ Status: verified against repo-only code paths on 2026-04-29.
 ## Verified Findings
 
 ### 1. High: Strategy invalidation missed real input changes
+
 - Root cause: `getStrategyInputHash()` in `drivers/energy-optimizer/services/strategy-calculation.js` only tracked price-cache length, rounded SoC, and a few normalized settings.
 - User impact: the optimizer could keep an outdated plan after quarter-hour rollover, changed spot prices with unchanged array length, or changed forecast/history inputs.
 - Evidence:
@@ -14,6 +15,7 @@ Status: verified against repo-only code paths on 2026-04-29.
 - Validation: `npm test -- device-resource-optimization.test.js`
 
 ### 2. Medium-High: Unknown battery cost estimation could overstate planned charge price
+
 - Root cause: `drivers/energy-optimizer/services/battery-cost.js` estimated unknown stored-energy cost from raw `chargeIntervals[].total` averages instead of the backend-computed `plannedCharging` economics.
 - User impact: mixed grid/solar planned charging could be shown and reused with a misleadingly high estimated battery price, especially when cheap solar charging dominated but spot prices of the same intervals were higher.
 - Evidence:
@@ -23,6 +25,7 @@ Status: verified against repo-only code paths on 2026-04-29.
 - Validation: `npm test -- device-resource-optimization.test.js`
 
 ### 3. Medium: Settings UI lost discharge plans on partial strategy objects
+
 - Root cause: `settings/index.html` treated `strategy.dischargeIntervals || strategy.expensiveIntervals` as a plain `||` fallback. Empty arrays are truthy, so a present-but-empty `dischargeIntervals` suppressed populated `expensiveIntervals`.
 - User impact: the chart/stats/timeline could hide expensive periods or discharge recommendations although backend data existed.
 - Evidence:
@@ -32,6 +35,7 @@ Status: verified against repo-only code paths on 2026-04-29.
 - Validation: `npm test -- settings-rendering.test.js`
 
 ### 4. Medium-Low: Battery-only strategy states were rendered as "no optimization plan"
+
 - Root cause: `renderTimeline()` required charge or discharge interval arrays and did not treat `batteryStatus` as sufficient state.
 - User impact: valid battery status data could disappear from the settings page during no-op or partial-strategy states.
 - Evidence:
@@ -40,6 +44,7 @@ Status: verified against repo-only code paths on 2026-04-29.
 - Validation: `npm test -- settings-rendering.test.js`
 
 ### 5. Low: Battery cost core comments claimed FIFO while code used proportional accounting
+
 - Root cause: stale documentation in `drivers/energy-optimizer/battery-cost-core.js`.
 - User impact: developer confusion and wrong audit assumptions, not a runtime defect.
 - Evidence:
@@ -76,34 +81,50 @@ node tools/simulate-optimizer.js
 Suggested commit sequence:
 
 1. `fix(optimizer): strengthen strategy invalidation inputs`
-  - `drivers/energy-optimizer/services/strategy-calculation.js`
-  - `test/device-resource-optimization.test.js`
-2. `fix(battery-cost): use planned charging economics for unknown energy`
-  - `drivers/energy-optimizer/services/battery-cost.js`
-  - `test/device-resource-optimization.test.js`
-3. `fix(settings): preserve discharge aliases and normalize display timezone`
-  - `settings/index.html`
-  - `test/settings-rendering.test.js`
-4. `test(simulator): add deterministic optimizer audit scenarios`
-  - `tools/simulate-optimizer.js`
-  - `test/optimizer-lp.test.js`
-5. `docs(audit): publish verified findings and residual risks`
-  - `docs/ENERGY_OPTIMIZER_AUDIT_REPORT.md`
-  - `drivers/energy-optimizer/battery-cost-core.js`
+
+- `drivers/energy-optimizer/services/strategy-calculation.js`
+- `test/device-resource-optimization.test.js`
+
+1. `fix(battery-cost): use planned charging economics for unknown energy`
+
+- `drivers/energy-optimizer/services/battery-cost.js`
+- `test/device-resource-optimization.test.js`
+
+1. `fix(settings): preserve discharge aliases and normalize display timezone`
+
+- `settings/index.html`
+- `test/settings-rendering.test.js`
+
+1. `test(simulator): add deterministic optimizer audit scenarios`
+
+- `tools/simulate-optimizer.js`
+- `test/optimizer-lp.test.js`
+
+1. `docs(audit): publish verified findings and residual risks`
+
+- `docs/ENERGY_OPTIMIZER_AUDIT_REPORT.md`
+- `drivers/energy-optimizer/battery-cost-core.js`
 
 Suggested PR structure:
 
 1. Problem statement
-  - stale strategies, misleading battery-cost fallback, and partial-strategy UI rendering produced inconsistent optimizer behavior and settings output
-2. Scope
-  - optimizer invalidation, battery-cost semantics, settings rendering fallbacks, settings timezone normalization, deterministic simulator coverage, audit documentation
-3. Validation
-  - `npm test -- optimizer-lp.test.js optimizer-core.test.js settings-rendering.test.js strategy-execution-core.test.js device-resource-optimization.test.js battery-cost-core.test.js`
-  - `node tools/simulate-optimizer.js`
-4. Reviewer focus
-  - confirm the strategy hash dimensions are sufficient without causing noisy recalculation
-  - confirm `Europe/Berlin` is the intended UI timezone contract for settings rendering
-  - confirm `plannedCharging` is the authoritative charge-cost source for unknown stored energy
+
+- stale strategies, misleading battery-cost fallback, and partial-strategy UI rendering produced inconsistent optimizer behavior and settings output
+
+1. Scope
+
+- optimizer invalidation, battery-cost semantics, settings rendering fallbacks, settings timezone normalization, deterministic simulator coverage, audit documentation
+
+1. Validation
+
+- `npm test -- optimizer-lp.test.js optimizer-core.test.js settings-rendering.test.js strategy-execution-core.test.js device-resource-optimization.test.js battery-cost-core.test.js`
+- `node tools/simulate-optimizer.js`
+
+1. Reviewer focus
+
+- confirm the strategy hash dimensions are sufficient without causing noisy recalculation
+- confirm `Europe/Berlin` is the intended UI timezone contract for settings rendering
+- confirm `plannedCharging` is the authoritative charge-cost source for unknown stored energy
 
 ## Remaining Risks
 

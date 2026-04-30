@@ -18,6 +18,9 @@ async function collectCurrentData(host) {
     const now = new Date();
     const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
     const intervalIndex = Math.floor(minutesSinceMidnight / INTERVAL_MINUTES); // 0-95
+    let latestSolarPower = null;
+    let latestGridPower = null;
+    let latestBatteryPower = null;
 
     const forecastDays = host.getSettingOrDefault('forecast_days', DEFAULT_FORECAST_DAYS);
 
@@ -29,6 +32,7 @@ async function collectCurrentData(host) {
 
         if (solarDevice && solarDevice.hasCapability('measure_power')) {
           const solarPower = solarDevice.getCapabilityValue('measure_power') || 0;
+          latestSolarPower = solarPower;
 
           if (!host.productionHistory[intervalIndex]) {
             host.productionHistory[intervalIndex] = [];
@@ -55,6 +59,7 @@ async function collectCurrentData(host) {
 
         if (gridDevice && gridDevice.hasCapability('measure_power')) {
           const gridPower = gridDevice.getCapabilityValue('measure_power') || 0;
+          latestGridPower = gridPower;
 
           if (!host.consumptionHistory[intervalIndex]) {
             host.consumptionHistory[intervalIndex] = [];
@@ -83,6 +88,7 @@ async function collectCurrentData(host) {
         if (batteryDevice) {
           // Battery driver provides measure_power
           const batteryPower = host.getCapabilitySafe(batteryDevice, 'measure_power');
+          latestBatteryPower = (typeof batteryPower === 'number' && Number.isFinite(batteryPower)) ? batteryPower : null;
 
           if (typeof batteryPower === 'number' && Number.isFinite(batteryPower)) {
             if (!host.batteryHistory[intervalIndex]) {
@@ -105,6 +111,16 @@ async function collectCurrentData(host) {
         // Battery device not found or error - not critical
         host.logThrottled('battery-device-error', 5 * 60 * 1000, 'Battery device not accessible:', error.message);
       }
+    }
+
+    if (typeof host.updateLiveEnergyState === 'function') {
+      host.updateLiveEnergyState({
+        solarPowerW: latestSolarPower,
+        gridPowerW: latestGridPower,
+        batteryPowerW: latestBatteryPower,
+        source: 'data-collection',
+        updatedAt: now.toISOString(),
+      });
     }
 
     // Save historical data every hour (at intervals 0, 4, 8, etc.)

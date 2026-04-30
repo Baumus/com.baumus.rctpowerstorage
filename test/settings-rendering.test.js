@@ -1,9 +1,24 @@
 'use strict';
 
+const de = require('../locales/de.json');
 const {
   calculateBatteryEnergyCost,
   createChargeEntry,
 } = require('../drivers/energy-optimizer/battery-cost-core');
+
+function t(key) {
+  return key.split('.').reduce((value, segment) => value?.[segment], de) || key;
+}
+
+function formatText(key, variables = {}) {
+  return t(key).replace(/\{(\w+)\}/g, (match, variableName) => {
+    if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
+      return match;
+    }
+
+    return String(variables[variableName]);
+  });
+}
 
 function getDischargeIntervals(strategy = {}) {
   if (Array.isArray(strategy.dischargeIntervals) && strategy.dischargeIntervals.length > 0) {
@@ -161,6 +176,49 @@ describe('Settings Page Data Rendering', () => {
   });
 
   describe('Price Chart Data Processing', () => {
+    it('should define a clear legend for price chart colors and average line', () => {
+      const legendItems = [
+        {
+          swatchClass: 'charging',
+          title: t('settings_page.price_legend.planned_grid_charge.title'),
+          detail: t('settings_page.price_legend.planned_grid_charge.detail'),
+        },
+        {
+          swatchClass: 'expensive',
+          title: t('settings_page.price_legend.expensive_use.title'),
+          detail: t('settings_page.price_legend.expensive_use.detail'),
+        },
+        {
+          swatchClass: 'cheap',
+          title: t('settings_page.price_legend.cheap_window.title'),
+          detail: t('settings_page.price_legend.cheap_window.detail'),
+        },
+        {
+          swatchClass: '',
+          title: t('settings_page.price_legend.normal_window.title'),
+          detail: t('settings_page.price_legend.normal_window.detail'),
+        },
+        {
+          swatchClass: 'avg-line',
+          title: t('settings_page.price_legend.average.title'),
+          detail: t('settings_page.price_legend.average.detail'),
+        },
+      ];
+
+      expect(legendItems).toHaveLength(5);
+      expect(legendItems.map((item) => item.title)).toEqual([
+        t('settings_page.price_legend.planned_grid_charge.title'),
+        t('settings_page.price_legend.expensive_use.title'),
+        t('settings_page.price_legend.cheap_window.title'),
+        t('settings_page.price_legend.normal_window.title'),
+        t('settings_page.price_legend.average.title'),
+      ]);
+      expect(legendItems[0].detail).toMatch(/Gelb/);
+      expect(legendItems[1].detail).toMatch(/Rot/);
+      expect(legendItems[3].detail).toMatch(/Grau/);
+      expect(legendItems[4].swatchClass).toBe('avg-line');
+    });
+
     it('should calculate price range correctly', () => {
       const priceCache = [
         { startsAt: '2024-01-15T10:00:00Z', total: 0.15 },
@@ -301,6 +359,35 @@ describe('Settings Page Data Rendering', () => {
   });
 
   describe('Timeline Data Processing', () => {
+    it('should phrase planned charging entries in user-facing language', () => {
+      const describePlannedCharge = (entry) => {
+        const symbol = entry?.plannedSymbol || '⚡';
+
+        if (symbol === '☀') {
+          return t('settings_page.timeline.describe_charge_solar');
+        }
+
+        return t('settings_page.timeline.describe_charge_grid');
+      };
+
+      expect(describePlannedCharge({ plannedSymbol: '⚡' })).toBe(t('settings_page.timeline.describe_charge_grid'));
+      expect(describePlannedCharge({ plannedSymbol: '☀' })).toBe(t('settings_page.timeline.describe_charge_solar'));
+      expect(describePlannedCharge({})).toBe(t('settings_page.timeline.describe_charge_grid'));
+    });
+
+    it('should phrase discharge periods as battery support for the house', () => {
+      const describeBatterySupport = (demandKWh) => {
+        if (typeof demandKWh === 'number' && Number.isFinite(demandKWh) && demandKWh > 0) {
+          return formatText('settings_page.timeline.battery_support_with_demand', { demand: demandKWh.toFixed(2) });
+        }
+
+        return t('settings_page.timeline.battery_support');
+      };
+
+      expect(describeBatterySupport(2.5)).toBe(formatText('settings_page.timeline.battery_support_with_demand', { demand: '2.50' }));
+      expect(describeBatterySupport(0)).toBe(t('settings_page.timeline.battery_support'));
+    });
+
     it('should format charge intervals correctly', () => {
       // Backend provides explicit per-entry source + €/kWh and a precomputed summary.
       const chargeDisplayEntries = [
@@ -401,7 +488,15 @@ describe('Settings Page Data Rendering', () => {
 
       expect(hasChargeIntervals).toBe(false);
       expect(hasExpensiveIntervals).toBe(false);
-      // Should show "No optimization plan available"
+      const noPlanMessage = t('settings_page.timeline.no_plan');
+      expect(noPlanMessage).toContain('Optimierungsplan');
+    });
+
+    it('should use clearer copy when no cheap charging slot exists', () => {
+      const noChargePlanMessage = t('settings_page.timeline.no_grid_charging_planned');
+
+      expect(noChargePlanMessage).toContain('keine Netzladung geplant');
+      expect(noChargePlanMessage).toContain('Haus direkt aus dem Netz');
     });
 
     it('should keep battery-only strategies renderable', () => {
@@ -585,15 +680,15 @@ describe('Settings Page Data Rendering', () => {
       const avgPriceText = `${cost.avgPrice.toFixed(4)} €/kWh`;
       const solarText = `☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)`;
       const gridText = `⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)`;
-      const headerText = `Current SoC: ${(bat.currentSoc * 100).toFixed(1)}% (Target: ${(bat.targetSoc * 100).toFixed(1)}%)`;
-      const capacityText = `Available Capacity: ${bat.availableCapacity.toFixed(2)} kWh`;
+      const headerText = `Ladestand: ${(bat.currentSoc * 100).toFixed(1)}% (Target: ${(bat.targetSoc * 100).toFixed(1)}%)`;
+      const capacityText = `Freier Ladeplatz bis Ziel: ${bat.availableCapacity.toFixed(2)} kWh`;
 
       // Verify string formatting matches HTML display
       expect(avgPriceText).toMatch(/^0\.\d{4} €\/kWh$/);
       expect(solarText).toMatch(/^☀️ Solar: \d+\.\d{2} kWh \(\d+%\)$/);
       expect(gridText).toMatch(/^⚡ Grid: \d+\.\d{2} kWh \(\d+%\)$/);
-      expect(headerText).toBe('Current SoC: 50.0% (Target: 85.0%)');
-      expect(capacityText).toBe('Available Capacity: 5.00 kWh');
+      expect(headerText).toBe('Ladestand: 50.0% (Target: 85.0%)');
+      expect(capacityText).toBe('Freier Ladeplatz bis Ziel: 5.00 kWh');
 
       // Total charge = 3.0 + 2.0 = 5.0 kWh
       // Solar = 1.0 + 0.5 = 1.5 kWh → 30%
@@ -630,12 +725,12 @@ describe('Settings Page Data Rendering', () => {
       // When energyCost is null, UI should display:
       // - "No data yet" as the value
       // - Info message about cost tracking
-      const expectedMessage = 'No data yet';
-      const expectedInfo = 'Cost tracking starts when battery charges with grid power';
+      const expectedMessage = 'Noch keine Daten';
+      const expectedInfo = t('settings_page.timeline.no_data_info').replace(/^ℹ️\s*/, '');
 
       // These would be the strings rendered in the HTML
-      expect(expectedMessage).toBe('No data yet');
-      expect(expectedInfo).toMatch(/Cost tracking starts when battery charges/);
+      expect(expectedMessage).toBe(t('settings_page.timeline.no_data_yet'));
+      expect(expectedInfo).toMatch(/Kostenerfassung beginnt/);
     });
 
     it('should display estimated battery cost with warning when isEstimated flag is set', () => {
@@ -668,17 +763,17 @@ describe('Settings Page Data Rendering', () => {
       expect(cost.totalKWh).toBe(7.3);
 
       // UI should show:
-      // - Label: "💰 Avg. Battery Energy Cost (Estimated):"
-      // - Warning: "⚠️ Source unknown - using estimated price"
+      // - Label: "💰 Geschaetzter Energiepreis in der Batterie:"
+      // - Warning: "⚠️ Der Ursprung der Batterieladung ist noch nicht vollstaendig bekannt."
       // - Values with estimated breakdown
-      const label = '💰 Avg. Battery Energy Cost (Estimated):';
-      const warning = '⚠️ Source unknown - using estimated price';
+      const label = t('settings_page.timeline.avg_battery_energy_cost_estimated_label');
+      const warning = t('settings_page.timeline.estimated_subtitle');
       const avgPriceText = `${cost.avgPrice.toFixed(4)} €/kWh`;
       const solarText = `☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)`;
       const gridText = `⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)`;
 
-      expect(label).toMatch(/Estimated/);
-      expect(warning).toMatch(/Source unknown/);
+      expect(label).toMatch(/Geschaetzter Energiepreis/);
+      expect(warning).toMatch(/Ursprung der Batterieladung/);
       expect(avgPriceText).toBe('0.1400 €/kWh');
       expect(solarText).toBe('☀️ Solar: 2.19 kWh (30%)');
       expect(gridText).toBe('⚡ Grid: 5.11 kWh (70%)');
@@ -757,6 +852,42 @@ describe('Settings Page Data Rendering', () => {
             },
           },
         },
+        dashboardSummary: {
+          currentAction: {
+            title: 'Batterie laedt aus dem Netz',
+            detail: 'Gerade laeuft ein geplantes guenstiges Ladefenster.',
+            tone: 'positive',
+          },
+          currentReason: 'Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.',
+          energyFlow: {
+            title: 'Netz laedt die Batterie',
+            detail: 'Der aktuelle Netzbezug enthaelt aktive Batterieladung aus dem geplanten Ladefenster.',
+          },
+          nextAction: {
+            title: 'Naechstes Ladefenster',
+            displayTime: '15.01.2024, 23:00',
+          },
+          chargePlan: {
+            hasPlan: true,
+            summary: 'Netzladung ist geplant, weil guenstige Preisfenster erkannt wurden.',
+            totalEnergyKWh: 8.5,
+            avgPriceEurPerKWh: 0.155,
+          },
+          savings: {
+            todayForecastEur: 2.45,
+            realized: {
+              currentMonthEur: 1.25,
+              lastMonthEur: 2.1,
+              last365DaysEur: 8.4,
+            },
+          },
+          battery: {
+            currentSocPercent: 65,
+            targetSocPercent: 85,
+            freeCapacityToTargetKWh: 3.5,
+            aboveTargetDeltaPercent: 0,
+          },
+        },
         priceCache: [
           { startsAt: '2024-01-15T22:00:00Z', total: 0.15 },
           { startsAt: '2024-01-15T22:15:00Z', total: 0.16 },
@@ -772,6 +903,13 @@ describe('Settings Page Data Rendering', () => {
       expect(apiResponse.strategy.chargeIntervals.length).toBe(2);
       expect(apiResponse.strategy.expensiveIntervals.length).toBe(1);
       expect(apiResponse.strategy.avgPrice).toBeCloseTo(0.2234, 4);
+
+      // Verify dashboard summary data
+      expect(apiResponse.dashboardSummary.currentAction.title).toBe('Batterie laedt aus dem Netz');
+      expect(apiResponse.dashboardSummary.energyFlow.title).toBe('Netz laedt die Batterie');
+      expect(apiResponse.dashboardSummary.chargePlan.hasPlan).toBe(true);
+      expect(apiResponse.dashboardSummary.savings.todayForecastEur).toBeCloseTo(2.45, 2);
+      expect(apiResponse.dashboardSummary.savings.realized.last365DaysEur).toBeCloseTo(8.4, 2);
 
       // Verify price cache
       expect(apiResponse.priceCache.length).toBe(3);
@@ -807,6 +945,145 @@ describe('Settings Page Data Rendering', () => {
       expect(savings).toBe(0);
       expect(chargeIntervals).toBe(0);
       expect(priceDataAvailable).toBe(false);
+    });
+
+    it('should derive summary card lines with backend summary fallbacks', () => {
+      const device = {
+        capabilities: {
+          optimizer_status: 'Optimizer active',
+          next_charge_start: 'Not scheduled',
+          estimated_savings: 0.75,
+        },
+      };
+
+      const summary = {
+        currentAction: {
+          title: 'Batterie wartet auf Solar oder spaetere Nutzung',
+          detail: 'Die Batterie wird im Haltemodus geschuetzt und nicht aktiv aus dem Netz geladen.',
+          tone: 'neutral',
+        },
+        currentReason: 'Es gibt guenstige Preisfenster spaeter am Tag, daher wird jetzt gewartet.',
+        energyFlow: {
+          title: 'Solar versorgt das Haus und speist Ueberschuss ein',
+          detail: 'Aktuell ist mehr Solarstrom verfuegbar als Haus und Batterie aufnehmen.',
+        },
+        nextAction: {
+          title: 'Naechstes Ladefenster',
+          displayTime: '29.04.2026, 16:00',
+        },
+        chargePlan: {
+          hasPlan: true,
+          summary: 'Netzladung ist geplant, weil guenstige Preisfenster erkannt wurden.',
+          totalEnergyKWh: 4.25,
+          avgPriceEurPerKWh: 0.1325,
+        },
+        savings: {
+          todayForecastEur: 0.75,
+          realized: {
+            currentMonthEur: 1.75,
+            lastMonthEur: 2.5,
+            last365DaysEur: 18.25,
+          },
+        },
+        battery: {
+          currentSocPercent: 91,
+          targetSocPercent: 80,
+          freeCapacityToTargetKWh: 0,
+          aboveTargetDeltaPercent: 11,
+        },
+      };
+
+      const fallbackStatus = device.capabilities.optimizer_status || t('settings_page.summary.no_data');
+      const actionTitle = summary.currentAction.title || fallbackStatus;
+      const flowTitle = summary.energyFlow?.title || t('settings_page.summary.energy_flow_unknown');
+      const nextTime = summary.nextAction.displayTime || t('settings_page.summary.next_not_scheduled');
+      const chargePlanSubtext = summary.chargePlan.hasPlan
+        ? formatText('settings_page.summary.plan_window_subtext', {
+          energy: Number(summary.chargePlan.totalEnergyKWh || 0).toFixed(2),
+          price: Number(summary.chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
+        })
+        : t('settings_page.summary.no_cheap_slot');
+      const realizedLine = formatText('settings_page.summary.realized_last_365', { amount: Number(summary.savings.realized?.last365DaysEur || 0).toFixed(2) });
+      const realizedSubtext = formatText('settings_page.summary.realized_subtext', {
+        currentMonth: Number(summary.savings.realized?.currentMonthEur || 0).toFixed(2),
+        lastMonth: Number(summary.savings.realized?.lastMonthEur || 0).toFixed(2),
+      });
+      const batteryLine = formatText('settings_page.summary.battery_line', {
+        soc: Number(summary.battery.currentSocPercent).toFixed(1),
+        target: Number(summary.battery.targetSocPercent || 0).toFixed(1),
+      });
+      const capacityLine = formatText('settings_page.summary.capacity_line', {
+        capacity: Number(summary.battery.freeCapacityToTargetKWh).toFixed(2),
+      });
+      const aboveTargetLine = summary.battery.aboveTargetDeltaPercent > 0
+        ? `Batterie liegt ${Number(summary.battery.aboveTargetDeltaPercent).toFixed(1)}% ueber dem Zielwert.`
+        : '';
+
+      expect(actionTitle).toBe('Batterie wartet auf Solar oder spaetere Nutzung');
+      expect(flowTitle).toBe('Solar versorgt das Haus und speist Ueberschuss ein');
+      expect(nextTime).toBe('29.04.2026, 16:00');
+      expect(chargePlanSubtext).toBe('4.25 kWh zu Ø 0.1325 €/kWh');
+      expect(realizedLine).toBe('365 Tage: €18.25');
+      expect(realizedSubtext).toBe('Aktueller Monat: €1.75 · Letzter Monat: €2.50');
+      expect(batteryLine).toBe('91.0% SoC · Ziel 80.0%');
+      expect(capacityLine).toBe('0.00 kWh frei bis zum Ziel');
+      expect(aboveTargetLine).toBe('Batterie liegt 11.0% ueber dem Zielwert.');
+    });
+
+    it('should derive live details and technical detail cards from summary plus strategy', () => {
+      const device = {
+        capabilities: {
+          optimizer_status: 'Charging at 3.3kW',
+          next_charge_start: '2024-01-15 22:00',
+          onoff: true,
+        },
+      };
+
+      const summary = {
+        currentAction: {
+          tone: 'positive',
+        },
+        currentReason: 'Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.',
+        nextAction: {
+          displayTime: '15.01.2024, 23:00',
+        },
+        energyFlow: {
+          title: 'Netz laedt die Batterie',
+        },
+        battery: {
+          freeCapacityToTargetKWh: 3.5,
+        },
+      };
+
+      const strategy = {
+        chargeIntervals: [{}, {}],
+        expensiveIntervals: [{}],
+        avgPrice: 0.2234,
+        neededKWh: 8.5,
+        forecastedDemand: 5,
+      };
+
+      const nextEvent = summary?.nextAction?.displayTime || device.capabilities?.next_charge_start || '-';
+      const flowTitle = summary?.energyFlow?.title || 'Noch keine Live-Flussdaten';
+      const liveReason = summary?.currentReason || device.capabilities?.optimizer_status || 'Unknown';
+      const chargeIntervals = strategy.chargeIntervals?.length || 0;
+      const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
+      const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
+      const neededKWh = Number.isFinite(strategy.neededKWh) ? strategy.neededKWh.toFixed(2) : '-';
+      const forecastedDemand = Number.isFinite(strategy.forecastedDemand) ? strategy.forecastedDemand.toFixed(2) : '-';
+      const freeCapacity = Number.isFinite(summary?.battery?.freeCapacityToTargetKWh)
+        ? Number(summary.battery.freeCapacityToTargetKWh).toFixed(2)
+        : '-';
+
+      expect(flowTitle).toBe('Netz laedt die Batterie');
+      expect(liveReason).toBe('Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.');
+      expect(nextEvent).toBe('15.01.2024, 23:00');
+      expect(chargeIntervals).toBe(2);
+      expect(expensiveIntervals).toBe(1);
+      expect(avgPrice).toBe('0.2234');
+      expect(freeCapacity).toBe('3.50');
+      expect(neededKWh).toBe('8.50');
+      expect(forecastedDemand).toBe('5.00');
     });
 
     it('should calculate all statistics from complete data', () => {
@@ -986,12 +1263,12 @@ describe('Settings Page Data Rendering', () => {
       expect(cost.unknownAvgPrice).toBe(0.20);
 
       // Verify UI labels
-      const label = hasMixedData ? '💰 Avg. Battery Energy Cost (Mixed):' : '💰 Avg. Battery Energy Cost:';
-      const subtitle = `📊 Tracked: ${cost.trackedKWh.toFixed(2)} kWh | Unknown: ${cost.unknownKWh.toFixed(2)} kWh (estimated @ ${cost.unknownAvgPrice.toFixed(4)} €/kWh)`;
+      const label = '💰 Durchschnittlicher Energiepreis in der Batterie:';
+      const subtitle = `Teilweise gemessen: ${cost.trackedKWh.toFixed(2)} kWh bekannt, ${cost.unknownKWh.toFixed(2)} kWh geschaetzt zu ${cost.unknownAvgPrice.toFixed(4)} €/kWh.`;
       
-      expect(label).toBe('💰 Avg. Battery Energy Cost (Mixed):');
-      expect(subtitle).toContain('Tracked: 3.00 kWh');
-      expect(subtitle).toContain('Unknown: 4.00 kWh');
+      expect(label).toBe('💰 Durchschnittlicher Energiepreis in der Batterie:');
+      expect(subtitle).toContain('3.00 kWh bekannt');
+      expect(subtitle).toContain('4.00 kWh geschaetzt');
       expect(subtitle).toContain('0.2000 €/kWh');
     });
 

@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Optimizer Dashboard</title>
     <style>
         body {
             margin: 0;
@@ -137,6 +138,77 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+
+        .summary-hero {
+            padding: 16px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(0, 160, 255, 0.12), rgba(255, 215, 0, 0.10));
+            border: 1px solid rgba(0, 160, 255, 0.2);
+            margin-bottom: 16px;
+        }
+
+        .summary-hero.positive {
+            border-color: rgba(0, 160, 255, 0.35);
+        }
+
+        .summary-hero.neutral {
+            border-color: rgba(128, 128, 128, 0.35);
+        }
+
+        .summary-eyebrow {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--homey-text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .summary-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--homey-text);
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+
+        .summary-detail {
+            color: var(--homey-text-secondary);
+            line-height: 1.5;
+        }
+
+        .summary-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .summary-panel {
+            padding: 14px;
+            background: var(--homey-background-highlight);
+            border-radius: 8px;
+        }
+
+        .summary-panel-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--homey-text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .summary-panel-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--homey-text);
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+
+        .summary-panel-subtext {
+            font-size: 13px;
+            color: var(--homey-text-secondary);
+            line-height: 1.45;
+        }
         
         .timeline {
             margin-top: 12px;
@@ -259,6 +331,69 @@
             color: var(--homey-text-secondary);
             padding: 0 2px;
         }
+
+        .chart-legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .chart-legend-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--homey-background-highlight);
+            border-radius: 8px;
+        }
+
+        .chart-legend-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            flex: 0 0 auto;
+            margin-top: 2px;
+            background: #888;
+        }
+
+        .chart-legend-swatch.cheap {
+            background: #00a0ff;
+        }
+
+        .chart-legend-swatch.charging {
+            background: #FFD700;
+        }
+
+        .chart-legend-swatch.expensive {
+            background: #ff4444;
+        }
+
+        .chart-legend-swatch.avg-line {
+            width: 18px;
+            height: 0;
+            border-top: 2px dashed #000000;
+            border-radius: 0;
+            background: transparent;
+            margin-top: 8px;
+        }
+
+        .chart-legend-copy {
+            min-width: 0;
+        }
+
+        .chart-legend-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--homey-text);
+            margin-bottom: 2px;
+        }
+
+        .chart-legend-detail {
+            font-size: 12px;
+            line-height: 1.4;
+            color: var(--homey-text-secondary);
+        }
         
         .chart-bar {
             flex: 1;
@@ -352,35 +487,144 @@
             font-size: 18px;
             color: var(--homey-text);
         }
+
+        @media (max-width: 720px) {
+            .homey-view {
+                padding: 12px;
+            }
+
+            .device-selector,
+            .homey-card {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+
+            .device-button {
+                padding: 14px;
+            }
+
+            .summary-title {
+                font-size: 20px;
+            }
+
+            .summary-grid,
+            .chart-legend {
+                grid-template-columns: 1fr;
+            }
+
+            .info-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .status-item,
+            .timeline-item {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .status-value,
+            .timeline-price,
+            .timeline-action {
+                text-align: left;
+            }
+
+            .timeline-time {
+                min-width: 0;
+            }
+
+            .chart-container {
+                height: 220px;
+                padding: 6px;
+            }
+
+            .chart-wrapper {
+                min-width: 720px;
+            }
+
+            .chart-y-axis {
+                min-width: 44px;
+                font-size: 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .homey-view {
+                padding: 10px;
+            }
+
+            .device-selector,
+            .homey-card {
+                padding: 14px;
+                border-radius: 10px;
+            }
+
+            .homey-card h2,
+            .device-selector h2 {
+                font-size: 16px;
+            }
+
+            .summary-title {
+                font-size: 18px;
+            }
+
+            .summary-panel,
+            .info-item,
+            .chart-legend-item {
+                padding: 12px;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .info-value {
+                font-size: 20px;
+            }
+
+            .timeline-item {
+                padding: 12px;
+            }
+
+            .chart-wrapper {
+                min-width: 640px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="homey-view">
         <div class="device-selector">
-            <h2>Energy Optimizer Devices</h2>
+            <h2 id="deviceSelectorTitle">Energy Optimizer Devices</h2>
             <div id="deviceList"></div>
         </div>
         
-        <div id="selectedDeviceContainer" style="display: none;">
+        <div id="selectedDeviceContainer" hidden>
             <div id="loading" class="loading">Loading optimizer data...</div>
             
-            <div id="content" style="display: none;">
+            <div id="content" hidden>
+                <!-- Dashboard Summary -->
+                <div class="homey-card">
+                    <h2 id="dashboardSummaryTitle">Dashboard Summary</h2>
+                    <div id="dashboardSummaryContainer"></div>
+                </div>
+
                 <!-- Current Status -->
                 <div class="homey-card">
-                    <h2>Current Status</h2>
+                    <h2 id="liveDetailsTitle">Live Details</h2>
                     <div id="statusContainer" class="status-grid"></div>
                     <button id="refreshBtn" class="homey-button">Refresh Data</button>
                 </div>
                 
                 <!-- Statistics -->
                 <div class="homey-card">
-                    <h2>Statistics</h2>
+                    <h2 id="technicalDetailsTitle">Technical Details</h2>
                     <div id="statsContainer"></div>
                 </div>
                 
                 <!-- Price Chart -->
                 <div class="homey-card">
-                    <h2>Price Chart (Available Data)</h2>
+                    <h2 id="priceChartTitle">Price Chart (Available Data)</h2>
                     <div id="priceChart" class="chart-container">
                         <div class="chart-wrapper">
                             <div class="chart-y-axis" id="chartYAxis"></div>
@@ -390,11 +634,12 @@
                             </div>
                         </div>
                     </div>
+                    <div id="chartLegend" class="chart-legend"></div>
                 </div>
                 
                 <!-- Optimization Plan -->
                 <div class="homey-card">
-                    <h2>Optimization Plan</h2>
+                    <h2 id="optimizationPlanTitle">Optimization Plan</h2>
                     <div id="timelineContainer"></div>
                 </div>
             </div>
@@ -404,13 +649,53 @@
     <script>
         let selectedDeviceId = null;
         let strategy;
+        let dashboardSummary;
         let priceCache = [];
         let homeyInstance;
         let autoRefreshInterval = null;
+
+        function t(key, fallback = key) {
+            if (homeyInstance && typeof homeyInstance.__ === 'function') {
+                try {
+                    const translated = homeyInstance.__(key);
+                    if (typeof translated === 'string' && translated.length > 0 && translated !== key) {
+                        return translated;
+                    }
+                } catch (error) {
+                    console.warn('Translation lookup failed for', key, error);
+                }
+            }
+
+            return fallback;
+        }
+
+        function formatText(key, variables = {}, fallback = '') {
+            const template = t(key, fallback);
+            return template.replace(/\{(\w+)\}/g, (match, variableName) => {
+                if (!Object.prototype.hasOwnProperty.call(variables, variableName)) {
+                    return match;
+                }
+
+                return String(variables[variableName]);
+            });
+        }
+
+        function applyStaticTranslations() {
+            document.title = t('settings_page.meta.title', 'Energy Optimizer Dashboard');
+            document.getElementById('deviceSelectorTitle').textContent = t('settings_page.device_selector.title', 'Energy Optimizer Devices');
+            document.getElementById('loading').textContent = t('settings_page.loading', 'Loading optimizer data...');
+            document.getElementById('dashboardSummaryTitle').textContent = t('settings_page.sections.dashboard_summary', 'Dashboard Summary');
+            document.getElementById('liveDetailsTitle').textContent = t('settings_page.sections.live_details', 'Live Details');
+            document.getElementById('technicalDetailsTitle').textContent = t('settings_page.sections.technical_details', 'Technical Details');
+            document.getElementById('priceChartTitle').textContent = t('settings_page.sections.price_chart', 'Price Chart (Available Data)');
+            document.getElementById('optimizationPlanTitle').textContent = t('settings_page.sections.optimization_plan', 'Optimization Plan');
+            document.getElementById('refreshBtn').textContent = t('settings_page.buttons.refresh', 'Refresh Data');
+        }
         
         function onHomeyReady(homey) {
-            homey.ready();
             homeyInstance = homey;
+            applyStaticTranslations();
+            homey.ready();
             
             loadDeviceList(homey);
         }
@@ -430,8 +715,8 @@
                 if (optimizerDevices.length === 0) {
                     deviceList.innerHTML = `
                         <div class="empty-state">
-                            <h3>No Energy Optimizer devices found</h3>
-                            <p>Add an Energy Optimizer device to view its optimization data.</p>
+                            <h3>${t('settings_page.device_list.empty_title', 'No Energy Optimizer devices found')}</h3>
+                            <p>${t('settings_page.device_list.empty_detail', 'Add an Energy Optimizer device to view its optimization data.')}</p>
                         </div>
                     `;
                     return;
@@ -441,7 +726,7 @@
                     <button class="device-button" data-device-id="${device.id}">
                         <div class="device-name">${device.name}</div>
                         <div class="device-status">
-                            ${device.status || 'Unknown'}
+                            ${device.status || t('settings_page.device_list.status_unknown', 'Unknown')}
                         </div>
                     </button>
                 `).join('');
@@ -469,14 +754,14 @@
             } catch (error) {
                 console.error('Error loading devices:', error);
                 document.getElementById('deviceList').innerHTML = `
-                    <div class="error">Error loading devices: ${error.message}</div>
+                    <div class="error">${formatText('settings_page.errors.loading_devices', { message: error.message }, 'Error loading devices: {message}')}</div>
                 `;
             }
         }
         
         function selectDevice(deviceId) {
             selectedDeviceId = deviceId;
-            document.getElementById('selectedDeviceContainer').style.display = 'block';
+            document.getElementById('selectedDeviceContainer').hidden = false;
             
             // Clear any existing auto-refresh
             if (autoRefreshInterval) {
@@ -501,11 +786,12 @@
             const refreshBtn = document.getElementById('refreshBtn');
             if (refreshBtn) {
                 refreshBtn.disabled = true;
-                refreshBtn.textContent = 'Loading...';
+                refreshBtn.textContent = t('settings_page.buttons.loading', 'Loading...');
             }
             
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('content').style.display = 'none';
+            document.getElementById('loading').textContent = t('settings_page.loading', 'Loading optimizer data...');
+            document.getElementById('loading').hidden = false;
+            document.getElementById('content').hidden = true;
             
             try {
                 // Get device data via API
@@ -513,7 +799,7 @@
                 const device = deviceResult.device;
                 
                 if (!device) {
-                    throw new Error('Device not found');
+                    throw new Error(t('settings_page.errors.device_not_found', 'Device not found'));
                 }
                 
                 // Get strategy data from API
@@ -521,62 +807,176 @@
                     const result = await homeyInstance.api('GET', `/device/${selectedDeviceId}/strategy`);
                     console.log('Strategy result:', result);
                     strategy = result.strategy || {};
+                    dashboardSummary = result.dashboardSummary || null;
                     priceCache = result.priceCache || [];
                     console.log('Price cache length:', priceCache.length);
                     console.log('Strategy:', strategy);
                 } catch (apiError) {
                     console.log('Strategy API not available, using limited data', apiError);
                     strategy = {};
+                    dashboardSummary = null;
                     priceCache = [];
                 }
                 
                 // Render all sections
-                renderStatus(device);
-                renderStats(device, strategy);
+                renderDashboardSummary(device, dashboardSummary);
+                renderStatus(device, dashboardSummary);
+                renderStats(strategy, dashboardSummary);
                 renderPriceChart(strategy, priceCache);
                 renderTimeline(strategy);
                 
                 // Show content
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('content').style.display = 'block';
+                document.getElementById('loading').hidden = true;
+                document.getElementById('content').hidden = false;
                 
             } catch (error) {
                 console.error('Error loading data:', error);
+                document.getElementById('loading').hidden = false;
+                document.getElementById('content').hidden = true;
                 document.getElementById('loading').innerHTML = `
                     <div class="error">
-                        Error loading optimizer data: ${error.message}
+                        ${formatText('settings_page.errors.loading_data', { message: error.message }, 'Error loading optimizer data: {message}')}
                     </div>
                 `;
             } finally {
                 if (refreshBtn) {
                     refreshBtn.disabled = false;
-                    refreshBtn.textContent = 'Refresh Data';
+                    refreshBtn.textContent = t('settings_page.buttons.refresh', 'Refresh Data');
                 }
             }
         }
         
-        function renderStatus(device) {
-            const status = device.capabilities?.optimizer_status || 'Unknown';
-            const nextCharge = device.capabilities?.next_charge_start || '-';
+        function renderStatus(device, summary) {
+            const status = device.capabilities?.optimizer_status || t('settings_page.status.no_data', 'Unknown');
+            const nextEvent = summary?.nextAction?.displayTime || device.capabilities?.next_charge_start || '-';
             const isEnabled = device.capabilities?.onoff || false;
-            const isCharging = status.toLowerCase().includes('charg');
+            const flowTitle = summary?.energyFlow?.title || t('settings_page.status.no_live_flow_data', 'Noch keine Live-Flussdaten');
+            const liveReason = summary?.currentReason || status;
+            const flowTone = summary?.currentAction?.tone || '';
             
             const html = `
-                <div class="status-item ${isEnabled ? (isCharging ? 'charging' : 'active') : ''}">
-                    <span class="status-label">Optimizer:</span>
-                    <span class="status-value">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+                <div class="status-item ${isEnabled ? (flowTone === 'positive' ? 'charging' : 'active') : ''}">
+                    <span class="status-label">${t('settings_page.status.labels.optimizer', 'Optimizer')}:</span>
+                    <span class="status-value">${isEnabled ? t('settings_page.status.enabled', 'Enabled') : t('settings_page.status.disabled', 'Disabled')}</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Status:</span>
-                    <span class="status-value">${status}</span>
+                    <span class="status-label">${t('settings_page.status.labels.live_flow', 'Live Flow')}:</span>
+                    <span class="status-value">${flowTitle}</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Next Charge:</span>
-                    <span class="status-value">${nextCharge}</span>
+                    <span class="status-label">${t('settings_page.status.labels.reason', 'Reason')}:</span>
+                    <span class="status-value">${liveReason}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">${t('settings_page.status.labels.next_event', 'Next Event')}:</span>
+                    <span class="status-value">${nextEvent}</span>
                 </div>
             `;
             
             document.getElementById('statusContainer').innerHTML = html;
+        }
+
+        function renderDashboardSummary(device, summary) {
+            const container = document.getElementById('dashboardSummaryContainer');
+            const fallbackStatus = device.capabilities?.optimizer_status || t('settings_page.summary.no_data', 'Keine Daten');
+            const fallbackNextCharge = device.capabilities?.next_charge_start || t('settings_page.summary.next_not_scheduled', 'Nicht geplant');
+            const fallbackSavings = device.capabilities?.estimated_savings || 0;
+
+            if (!summary || !summary.currentAction) {
+                container.innerHTML = `
+                    <div class="summary-hero neutral">
+                        <div class="summary-eyebrow">${t('settings_page.summary.eyebrow_now', 'Jetzt')}</div>
+                        <div class="summary-title">${fallbackStatus}</div>
+                        <div class="summary-detail">${t('settings_page.summary.unavailable', 'Eine erklaerende Dashboard-Zusammenfassung ist fuer dieses Geraet noch nicht verfuegbar.')}</div>
+                    </div>
+                    <div class="summary-grid">
+                        <div class="summary-panel">
+                            <div class="summary-panel-label">${t('settings_page.summary.next_event', 'Naechstes Ereignis')}</div>
+                            <div class="summary-panel-value">${fallbackNextCharge}</div>
+                        </div>
+                        <div class="summary-panel">
+                            <div class="summary-panel-label">${t('settings_page.summary.today_forecast', 'Heutige Prognose')}</div>
+                            <div class="summary-panel-value">€${Number(fallbackSavings).toFixed(2)}</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const action = summary.currentAction || {};
+            const nextAction = summary.nextAction || {};
+            const chargePlan = summary.chargePlan || {};
+            const battery = summary.battery || {};
+            const savings = summary.savings || {};
+            const nextTime = nextAction.displayTime || t('settings_page.summary.next_not_scheduled', 'Nicht geplant');
+            const batteryLine = battery.currentSocPercent !== undefined
+                ? formatText('settings_page.summary.battery_line', {
+                    soc: Number(battery.currentSocPercent).toFixed(1),
+                    target: Number(battery.targetSocPercent || 0).toFixed(1),
+                }, '{soc}% SoC · Ziel {target}%')
+                : t('settings_page.summary.battery_status_unavailable', 'Batteriestatus nicht verfuegbar');
+            const capacityLine = battery.freeCapacityToTargetKWh !== undefined
+                ? formatText('settings_page.summary.capacity_line', {
+                    capacity: Number(battery.freeCapacityToTargetKWh).toFixed(2),
+                }, '{capacity} kWh frei bis zum Ziel')
+                : t('settings_page.summary.no_capacity_available', 'Kein Ladeplatz verfuegbar');
+            const aboveTargetLine = battery.aboveTargetDeltaPercent > 0
+                ? formatText('settings_page.summary.above_target_line', {
+                    delta: Number(battery.aboveTargetDeltaPercent).toFixed(1),
+                }, 'Batterie liegt {delta}% ueber dem Zielwert.')
+                : '';
+
+            container.innerHTML = `
+                <div class="summary-hero ${action.tone || 'neutral'}">
+                    <div class="summary-eyebrow">${t('settings_page.summary.eyebrow_now', 'Jetzt')}</div>
+                    <div class="summary-title">${action.title || fallbackStatus}</div>
+                    <div class="summary-detail">${action.detail || summary.currentReason || ''}</div>
+                </div>
+                <div class="summary-grid">
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.why_now', 'Warum gerade?')}</div>
+                        <div class="summary-panel-value">${summary.currentReason || t('settings_page.summary.why_now_fallback', 'Keine weitere Begruendung verfuegbar.')}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.next_up', 'Als Naechstes')}</div>
+                        <div class="summary-panel-value">${nextAction.title || t('settings_page.summary.no_next_event', 'Kein weiteres Ereignis geplant')}</div>
+                        <div class="summary-panel-subtext">${nextTime}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.energy_flow', 'Energiefluss')}</div>
+                        <div class="summary-panel-value">${summary.energyFlow?.title || t('settings_page.summary.energy_flow_unknown', 'Energiefluss unbekannt')}</div>
+                        <div class="summary-panel-subtext">${summary.energyFlow?.detail || t('settings_page.summary.energy_flow_no_measurements', 'Es liegen noch keine Live-Messwerte vor.')}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.planned_grid_charge', 'Geplante Netzladung')}</div>
+                        <div class="summary-panel-value">${chargePlan.summary || t('dashboard.charge_plan.none', 'Keine Netzladung geplant.')}</div>
+                        <div class="summary-panel-subtext">${chargePlan.hasPlan ? formatText('settings_page.summary.plan_window_subtext', {
+                            energy: Number(chargePlan.totalEnergyKWh || 0).toFixed(2),
+                            price: Number(chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
+                        }, '{energy} kWh zu Ø {price} €/kWh') : t('settings_page.summary.no_cheap_slot', 'Aktuell kein guenstiges Ladefenster im Plan.')}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.today_forecast', 'Heutige Prognose')}</div>
+                        <div class="summary-panel-value">€${Number(savings.todayForecastEur || 0).toFixed(2)}</div>
+                        <div class="summary-panel-subtext">${t('settings_page.summary.today_forecast_subtext', 'Geschaetzte Optimierungswirkung fuer den aktuellen Plan.')}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.realized', 'Realisiert')}</div>
+                        <div class="summary-panel-value">${formatText('settings_page.summary.realized_last_365', {
+                            amount: Number(savings.realized?.last365DaysEur || 0).toFixed(2),
+                        }, '365 Tage: €{amount}')}</div>
+                        <div class="summary-panel-subtext">${formatText('settings_page.summary.realized_subtext', {
+                            currentMonth: Number(savings.realized?.currentMonthEur || 0).toFixed(2),
+                            lastMonth: Number(savings.realized?.lastMonthEur || 0).toFixed(2),
+                        }, 'Aktueller Monat: €{currentMonth} · Letzter Monat: €{lastMonth}')}</div>
+                    </div>
+                    <div class="summary-panel">
+                        <div class="summary-panel-label">${t('settings_page.summary.battery', 'Batterie')}</div>
+                        <div class="summary-panel-value">${batteryLine}</div>
+                        <div class="summary-panel-subtext">${capacityLine}${aboveTargetLine ? `<br>${aboveTargetLine}` : ''}</div>
+                    </div>
+                </div>
+            `;
         }
 
         const DISPLAY_TIME_ZONE = 'Europe/Berlin';
@@ -620,35 +1020,44 @@
             return [];
         }
         
-        function renderStats(device, strategy) {
-            const savings = device.capabilities?.estimated_savings || 0;
+        function renderStats(strategy, summary) {
             const chargeIntervals = strategy.chargeIntervals?.length || 0;
             const expensiveIntervals = getDischargeIntervals(strategy).length;
             const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
-            const neededKWh = strategy.neededKWh ? strategy.neededKWh.toFixed(2) : '-';
+            const neededKWh = Number.isFinite(strategy.neededKWh) ? strategy.neededKWh.toFixed(2) : '-';
+            const forecastedDemand = Number.isFinite(strategy.forecastedDemand) ? strategy.forecastedDemand.toFixed(2) : '-';
+            const freeCapacity = Number.isFinite(summary?.battery?.freeCapacityToTargetKWh)
+                ? Number(summary.battery.freeCapacityToTargetKWh).toFixed(2)
+                : '-';
             
             const html = `
                 <div class="info-grid">
                     <div class="info-item">
-                        <div class="info-value">€${savings.toFixed(2)}</div>
-                        <div class="info-label">Est. Savings</div>
-                    </div>
-                    <div class="info-item">
                         <div class="info-value">${chargeIntervals}</div>
-                        <div class="info-label">Charge Slots</div>
+                        <div class="info-label">${t('settings_page.stats.charge_slots', 'Charge Slots')}</div>
                     </div>
                     <div class="info-item">
                         <div class="info-value">${expensiveIntervals}</div>
-                        <div class="info-label">Exp. Periods</div>
+                        <div class="info-label">${t('settings_page.stats.expensive_periods', 'Exp. Periods')}</div>
                     </div>
                     <div class="info-item">
                         <div class="info-value">${avgPrice}</div>
-                        <div class="info-label">Avg €/kWh</div>
+                        <div class="info-label">${t('settings_page.stats.avg_price', 'Avg €/kWh')}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-value">${freeCapacity}</div>
+                        <div class="info-label">${t('settings_page.stats.free_capacity', 'Free kWh To Target')}</div>
                     </div>
                     ${neededKWh !== '-' ? `
                     <div class="info-item">
                         <div class="info-value">${neededKWh}</div>
-                        <div class="info-label">Needed kWh</div>
+                        <div class="info-label">${t('settings_page.stats.planned_charge', 'Planned Charge kWh')}</div>
+                    </div>
+                    ` : ''}
+                    ${forecastedDemand !== '-' ? `
+                    <div class="info-item">
+                        <div class="info-value">${forecastedDemand}</div>
+                        <div class="info-label">${t('settings_page.stats.forecast_demand', 'Forecast Demand kWh')}</div>
                     </div>
                     ` : ''}
                 </div>
@@ -656,15 +1065,56 @@
             
             document.getElementById('statsContainer').innerHTML = html;
         }
+
+        function renderPriceLegend() {
+            const legendItems = [
+                {
+                    swatchClass: 'charging',
+                    title: t('settings_page.price_legend.planned_grid_charge.title', 'Geplante Netzladung'),
+                    detail: t('settings_page.price_legend.planned_grid_charge.detail', 'Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.'),
+                },
+                {
+                    swatchClass: 'expensive',
+                    title: t('settings_page.price_legend.expensive_use.title', 'Teure Verbrauchszeit'),
+                    detail: t('settings_page.price_legend.expensive_use.detail', 'Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.'),
+                },
+                {
+                    swatchClass: 'cheap',
+                    title: t('settings_page.price_legend.cheap_window.title', 'Guenstige Preiszeit'),
+                    detail: t('settings_page.price_legend.cheap_window.detail', 'Blau zeigt guenstige Preise ohne aktive Ladeplanung.'),
+                },
+                {
+                    swatchClass: '',
+                    title: t('settings_page.price_legend.normal_window.title', 'Normale Preiszeit'),
+                    detail: t('settings_page.price_legend.normal_window.detail', 'Grau steht fuer alle Preisfenster ohne besondere Markierung.'),
+                },
+                {
+                    swatchClass: 'avg-line',
+                    title: t('settings_page.price_legend.average.title', 'Durchschnittspreis'),
+                    detail: t('settings_page.price_legend.average.detail', 'Die gestrichelte Linie zeigt den Mittelwert ueber alle dargestellten Preise.'),
+                },
+            ];
+
+            document.getElementById('chartLegend').innerHTML = legendItems.map((item) => `
+                <div class="chart-legend-item">
+                    <span class="chart-legend-swatch ${item.swatchClass}"></span>
+                    <div class="chart-legend-copy">
+                        <div class="chart-legend-title">${item.title}</div>
+                        <div class="chart-legend-detail">${item.detail}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
         
         function renderPriceChart(strategy, priceCache) {
             console.log('=== renderPriceChart START ===');
             const chartBars = document.getElementById('chartBars');
             const chartYAxis = document.getElementById('chartYAxis');
             const chartXAxis = document.getElementById('chartXAxis');
+            renderPriceLegend();
             
             if (!priceCache || priceCache.length === 0) {
-                chartBars.innerHTML = '<div class="no-data">No price data available</div>';
+                chartBars.innerHTML = `<div class="no-data">${t('settings_page.price_chart.no_price_data', 'No price data available')}</div>`;
                 chartYAxis.innerHTML = '';
                 chartXAxis.innerHTML = '';
                 return;
@@ -674,7 +1124,7 @@
             const availableIntervals = priceCache;
             
             if (availableIntervals.length === 0) {
-                chartBars.innerHTML = '<div class="no-data">No upcoming price data</div>';
+                chartBars.innerHTML = `<div class="no-data">${t('settings_page.price_chart.no_upcoming_data', 'No upcoming price data')}</div>`;
                 chartYAxis.innerHTML = '';
                 chartXAxis.innerHTML = '';
                 return;
@@ -759,7 +1209,9 @@
             
             const avgLabel = document.createElement('div');
             avgLabel.className = 'chart-avg-label';
-            avgLabel.textContent = `Ø €${avgPrice.toFixed(3)}`;
+            avgLabel.textContent = formatText('settings_page.price_chart.avg_label', {
+                price: avgPrice.toFixed(3),
+            }, 'Ø €{price}');
             avgLine.appendChild(avgLabel);
             
             chartBars.appendChild(avgLine);
@@ -778,6 +1230,26 @@
             xAxisHtml = timeLabels.map(label => `<span>${label}</span>`).join('');
             chartXAxis.innerHTML = xAxisHtml;
         }
+
+        function describePlannedCharge(entry) {
+            const symbol = entry?.plannedSymbol || '⚡';
+
+            if (symbol === '☀') {
+                return t('settings_page.timeline.describe_charge_solar', '☀ Batterie mit Solar laden');
+            }
+
+            return t('settings_page.timeline.describe_charge_grid', '⚡ Batterie aus dem Netz laden');
+        }
+
+        function describeBatterySupport(demandKWh) {
+            if (typeof demandKWh === 'number' && Number.isFinite(demandKWh) && demandKWh > 0) {
+                return formatText('settings_page.timeline.battery_support_with_demand', {
+                    demand: demandKWh.toFixed(2),
+                }, '🔋 Batterie versorgt das Haus ({demand} kWh)');
+            }
+
+            return t('settings_page.timeline.battery_support', '🔋 Batterie versorgt das Haus');
+        }
         
         function renderTimeline(strategy) {
             const container = document.getElementById('timelineContainer');
@@ -792,7 +1264,7 @@
             const hasBatteryStatus = !!strategy?.batteryStatus;
             
             if (!strategy || (!hasChargeIntervals && dischargeIntervals.length === 0 && !hasBatteryStatus)) {
-                container.innerHTML = '<div class="no-data">No optimization plan available</div>';
+                container.innerHTML = `<div class="no-data">${t('settings_page.timeline.no_plan', 'Aktuell gibt es noch keinen Optimierungsplan fuer Laden oder Batterienutzung.')}</div>`;
                 return;
             }
             
@@ -810,20 +1282,23 @@
                     : false;
                 
                 html += `
-                    <div class="section-title">🔋 Battery Status</div>
+                    <div class="section-title">${t('settings_page.timeline.battery_and_costs', 'Batterie und Energiekosten')}</div>
                     <div class="status-item ${batteryFull ? 'charging' : 'active'}" style="margin-bottom: 16px;">
                         <div style="width: 100%;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span class="status-label">Current SoC:</span>
-                                <span class="status-value">${socPercent}% (Target: ${targetPercent}%)</span>
+                                <span class="status-label">${t('settings_page.timeline.charge_level', 'Ladestand')}:</span>
+                                <span class="status-value">${formatText('settings_page.timeline.charge_level_value', {
+                                    current: socPercent,
+                                    target: targetPercent,
+                                }, '{current}% (Target: {target}%)')}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span class="status-label">Stored Energy:</span>
+                                <span class="status-label">${t('settings_page.timeline.stored_energy', 'Gespeicherte Energie')}:</span>
                                 <span class="status-value">${storedKWh} kWh</span>
                             </div>
                             <div style="display: flex; justify-content: space-between;">
-                                <span class="status-label">Available Capacity:</span>
-                                <span class="status-value">${availableKWh} kWh ${batteryFull ? '⚠️ Battery already at target' : ''}</span>
+                                <span class="status-label">${t('settings_page.timeline.free_capacity', 'Freier Ladeplatz bis Ziel')}:</span>
+                                <span class="status-value">${availableKWh} kWh ${batteryFull ? t('settings_page.timeline.target_reached_warning', '⚠️ Batterie liegt bereits am Zielwert') : ''}</span>
                             </div>
                         </div>
                     </div>
@@ -839,17 +1314,20 @@
                     
                     let label = '💰 Avg. Battery Energy Cost:';
                     let subtitle = '';
-                    let detailsHtml = '';
                     
                     if (hasMixedData) {
-                        label = '💰 Avg. Battery Energy Cost (Mixed):';
-                        subtitle = `📊 Tracked: ${safeToFixed(trackedKWh, 2)} kWh | Unknown: ${safeToFixed(unknownKWh, 2)} kWh (estimated @ ${safeToFixed(cost.unknownAvgPrice, 4, '?')} €/kWh)`;
+                        label = t('settings_page.timeline.avg_battery_energy_cost_measured_label', '💰 Durchschnittlicher Energiepreis in der Batterie:');
+                        subtitle = formatText('settings_page.timeline.mixed_subtitle', {
+                            tracked: safeToFixed(trackedKWh, 2),
+                            unknown: safeToFixed(unknownKWh, 2),
+                            unknownPrice: safeToFixed(cost.unknownAvgPrice, 4, '?'),
+                        }, 'Teilweise gemessen: {tracked} kWh bekannt, {unknown} kWh geschaetzt zu {unknownPrice} €/kWh.');
                     } else if (isEstimated) {
-                        label = '💰 Avg. Battery Energy Cost (Estimated):';
-                        subtitle = '⚠️ Source unknown - using estimated price';
+                        label = t('settings_page.timeline.avg_battery_energy_cost_estimated_label', '💰 Geschaetzter Energiepreis in der Batterie:');
+                        subtitle = t('settings_page.timeline.estimated_subtitle', '⚠️ Der Ursprung der Batterieladung ist noch nicht vollstaendig bekannt.');
                     } else {
-                        label = '💰 Avg. Battery Energy Cost (Tracked):';
-                        subtitle = '✅ Based on actual charge/discharge log';
+                        label = t('settings_page.timeline.avg_battery_energy_cost_measured_label', '💰 Durchschnittlicher Energiepreis in der Batterie:');
+                        subtitle = t('settings_page.timeline.measured_subtitle', '✅ Basierend auf den erfassten Lade- und Entladevorgaengen.');
                     }
                     
                     html += `
@@ -861,8 +1339,14 @@
                                 </div>
                                 ${subtitle ? `<div style="font-size: 0.85em; color: ${hasMixedData ? '#3498db' : '#f39c12'}; margin-bottom: 4px;">${subtitle}</div>` : ''}
                                 <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    <span>☀️ Solar: ${safeToFixed(cost.solarKWh, 2)} kWh (${safeToFixed(cost.solarPercent, 0)}%)</span>
-                                    <span>⚡ Grid: ${safeToFixed(cost.gridKWh, 2)} kWh (${safeToFixed(cost.gridPercent, 0)}%)</span>
+                                    <span>${formatText('settings_page.timeline.solar_share', {
+                                        energy: safeToFixed(cost.solarKWh, 2),
+                                        percent: safeToFixed(cost.solarPercent, 0),
+                                    }, '☀️ Solar: {energy} kWh ({percent}%)')}</span>
+                                    <span>${formatText('settings_page.timeline.grid_share', {
+                                        energy: safeToFixed(cost.gridKWh, 2),
+                                        percent: safeToFixed(cost.gridPercent, 0),
+                                    }, '⚡ Grid: {energy} kWh ({percent}%)')}</span>
                                 </div>
                             </div>
                         </div>
@@ -873,11 +1357,11 @@
                         <div class="status-item" style="margin-bottom: 16px; opacity: 0.7;">
                             <div style="width: 100%;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span class="status-label">💰 Avg. Battery Energy Cost (Actual):</span>
-                                    <span class="status-value" style="color: #888;">No data yet</span>
+                                    <span class="status-label">${t('settings_page.timeline.avg_battery_energy_cost_unknown_label', '💰 Energiepreis in der Batterie:')}</span>
+                                    <span class="status-value" style="color: #888;">${t('settings_page.timeline.no_data_yet', 'Noch keine Daten')}</span>
                                 </div>
                                 <div style="font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    ℹ️ Cost tracking starts when battery charges with grid power
+                                    ${t('settings_page.timeline.no_data_info', 'ℹ️ Die Kostenerfassung beginnt, sobald erstmals Ladevorgaenge erfasst werden.')}
                                 </div>
                             </div>
                         </div>
@@ -890,11 +1374,11 @@
                         <div class="status-item" style="margin-bottom: 16px;">
                             <div style="width: 100%;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span class="status-label">💰 Planned Charge Price:</span>
+                                    <span class="status-label">${t('settings_page.timeline.planned_avg_charge_price', '💰 Geplanter durchschnittlicher Ladepreis:')}</span>
                                     <span class="status-value">${strategy.plannedCharging.avgPriceEurPerKWh.toFixed(4)} €/kWh</span>
                                 </div>
                                 <div style="font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    Based on planned ⚡ grid + ☀️ solar charging
+                                    ${t('settings_page.timeline.planned_avg_charge_price_info', 'Dieser Wert basiert auf dem geplanten Mix aus Netz- und Solarladung.')}
                                 </div>
                             </div>
                         </div>
@@ -917,12 +1401,12 @@
                 
                 html += `
                     <div class="status-item active" style="margin-bottom: 16px;">
-                        <span class="status-label">🔍 First Charge (from strategy):</span>
+                        <span class="status-label">${t('settings_page.timeline.next_planned_window', 'Naechstes geplantes Ladefenster')}:</span>
                         <span class="status-value">${firstTimeStr}</span>
                     </div>
                 `;
                 
-                html += '<div class="section-title">🔋 Planned Charging</div>';
+                html += `<div class="section-title">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</div>`;
                 html += '<div class="timeline">';
 
                 const displayEntries = (chargeEntries.length > 0 ? chargeEntries : strategy.chargeIntervals).slice(0, 12);
@@ -931,7 +1415,6 @@
                     const timeStr = formatDisplayTime(entry.startsAt);
                     const dateStr = formatDisplayDate(entry.startsAt);
 
-                    const symbol = entry.plannedSymbol || '⚡';
                     const plannedKWh = (typeof entry.plannedEnergyKWh === 'number' && Number.isFinite(entry.plannedEnergyKWh))
                         ? entry.plannedEnergyKWh
                         : null;
@@ -946,34 +1429,38 @@
                         <div class="timeline-item cheap">
                             <span class="timeline-time">${dateStr} ${timeStr}</span>
                             <span class="timeline-price">${priceText}</span>
-                            <span class="timeline-action">${symbol} Charge${plannedKWh !== null ? ` +${plannedKWh.toFixed(2)} kWh` : ''}</span>
+                            <span class="timeline-action">${describePlannedCharge(entry)}${plannedKWh !== null ? ` · ${plannedKWh.toFixed(2)} kWh` : ''}</span>
                         </div>
                     `;
                 });
 
                 const totalEntryCount = (chargeEntries.length > 0 ? chargeEntries.length : strategy.chargeIntervals.length);
                 if (totalEntryCount > 12) {
-                    html += `<div class="no-data">... and ${totalEntryCount - 12} more entries</div>`;
+                    html += `<div class="no-data">${formatText('settings_page.timeline.more_entries', { count: totalEntryCount - 12 }, '... and {count} more entries')}</div>`;
                 }
 
                 if (strategy.plannedCharging && typeof strategy.plannedCharging.totalEnergyKWh === 'number' && Number.isFinite(strategy.plannedCharging.totalEnergyKWh) && strategy.plannedCharging.totalEnergyKWh > 0) {
                     html += `
                         <div class="status-item" style="margin-top: 12px;">
-                            <span class="status-label">Total Charging:</span>
-                            <span class="status-value">${strategy.plannedCharging.totalEnergyKWh.toFixed(2)} kWh @ avg ${strategy.plannedCharging.avgPriceEurPerKWh.toFixed(4)} €/kWh = €${strategy.plannedCharging.totalCostEur.toFixed(2)}</span>
+                            <span class="status-label">${t('settings_page.timeline.load_plan_total', 'Ladeplan gesamt')}:</span>
+                            <span class="status-value">${formatText('settings_page.timeline.load_plan_total_value', {
+                                energy: strategy.plannedCharging.totalEnergyKWh.toFixed(2),
+                                price: strategy.plannedCharging.avgPriceEurPerKWh.toFixed(4),
+                                total: strategy.plannedCharging.totalCostEur.toFixed(2),
+                            }, '{energy} kWh zu Ø {price} €/kWh = €{total}')}</span>
                         </div>
                     `;
                 }
                 
                 html += '</div>';
             } else {
-                html += '<div class="section-title">🔋 Planned Charging</div>';
-                html += '<div class="no-data">No cheap charging slots found - will use grid directly</div>';
+                html += `<div class="section-title">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</div>`;
+                html += `<div class="no-data">${t('settings_page.timeline.no_grid_charging_planned', 'Aktuell ist keine Netzladung geplant. Wenn Energie fehlt, wird das Haus direkt aus dem Netz versorgt.')}</div>`;
             }
             
             // Expensive intervals (discharge)
             if (dischargeIntervals.length > 0) {
-                html += '<div class="section-title">⚠️ Expensive Periods (Use Battery)</div>';
+                html += `<div class="section-title">${t('settings_page.timeline.expensive_times_with_battery_use', 'Teure Zeiten mit Batterienutzung')}</div>`;
                 html += '<div class="timeline">';
                 
                 const displayIntervals = dischargeIntervals.slice(0, 12);
@@ -988,13 +1475,13 @@
                         <div class="timeline-item expensive">
                             <span class="timeline-time">${dateStr} ${timeStr}</span>
                             <span class="timeline-price">${price} €/kWh</span>
-                            <span class="timeline-action discharge">🔋 Use Battery -${demand.toFixed(2)} kWh</span>
+                            <span class="timeline-action discharge">${describeBatterySupport(demand)}</span>
                         </div>
                     `;
                 });
                 
                 if (dischargeIntervals.length > 12) {
-                    html += `<div class="no-data">... and ${dischargeIntervals.length - 12} more intervals</div>`;
+                    html += `<div class="no-data">${formatText('settings_page.timeline.more_intervals', { count: dischargeIntervals.length - 12 }, '... and {count} more intervals')}</div>`;
                 }
                 
                 // Add discharge summary using backend-provided economics (UI stays dumb)
@@ -1006,19 +1493,22 @@
                 
                 html += `
                     <div class="status-item" style="margin-top: 12px;">
-                        <span class="status-label">Forecasted Demand:</span>
-                        <span class="status-value">${forecastedDemand.toFixed(1)} kWh @ avg ${avgExpensivePrice.toFixed(4)} €/kWh</span>
+                        <span class="status-label">${t('settings_page.timeline.expected_demand_expensive', 'Erwarteter Bedarf in teuren Zeiten')}:</span>
+                        <span class="status-value">${formatText('settings_page.timeline.expected_demand_expensive_value', {
+                            demand: forecastedDemand.toFixed(1),
+                            price: avgExpensivePrice.toFixed(4),
+                        }, '{demand} kWh @ avg {price} €/kWh')}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Without Battery:</span>
+                        <span class="status-label">${t('settings_page.timeline.without_battery_use', 'Ohne Batterienutzung')}:</span>
                         <span class="status-value">€${(typeof baselineCost === 'number' ? baselineCost : 0).toFixed(2)}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">With Battery:</span>
+                        <span class="status-label">${t('settings_page.timeline.with_battery_use', 'Mit Batterienutzung')}:</span>
                         <span class="status-value">€${(typeof optimizedCost === 'number' ? optimizedCost : 0).toFixed(2)}</span>
                     </div>
                     <div class="status-item active">
-                        <span class="status-label">Estimated Savings:</span>
+                        <span class="status-label">${t('settings_page.timeline.estimated_savings', 'Geschaetzte Einsparung')}:</span>
                         <span class="status-value">€${Math.max(0, typeof savings === 'number' ? savings : 0).toFixed(2)}</span>
                     </div>
                 `;
@@ -1027,7 +1517,7 @@
             }
             
             if (!html) {
-                html = '<div class="no-data">No timeline data available</div>';
+                html = `<div class="no-data">${t('settings_page.timeline.no_usable_data', 'Es sind noch keine verwertbaren Plan- oder Batteriedaten verfuegbar.')}</div>`;
             }
             
             container.innerHTML = html;

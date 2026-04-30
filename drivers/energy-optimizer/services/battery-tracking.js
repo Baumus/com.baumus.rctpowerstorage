@@ -7,6 +7,7 @@ const {
   shouldClearChargeLog,
   trimChargeLog,
 } = require('../battery-cost-core');
+const { updateSavingsHistoryWithEntry } = require('./savings-history');
 const { getPriceAtTime } = require('../time-scheduling-core');
 const { INTERVAL_MINUTES, MAX_BATTERY_LOG_ENTRIES } = require('../constants');
 
@@ -181,6 +182,7 @@ async function trackBatteryCharging(host, batteryPower) {
       });
 
       host.batteryChargeLog.push(dischargeEntry);
+      host.savingsHistory = updateSavingsHistoryWithEntry(host.savingsHistory, dischargeEntry);
 
       // Keep log trimmed to avoid unbounded growth
       if (host.batteryChargeLog.length > MAX_BATTERY_LOG_ENTRIES) {
@@ -188,6 +190,7 @@ async function trackBatteryCharging(host, batteryPower) {
       }
 
       await host.queueStoreValue('battery_charge_log', host.batteryChargeLog);
+      await host.queueStoreValue('savings_history', host.savingsHistory);
     }
 
     // Cleanup old entries - keep only last several days

@@ -148,6 +148,7 @@ async function executeOptimizationStrategy(host) {
   }
 
   const currentSocPercent = host.getCapabilitySafe(batteryDevice, 'measure_battery');
+  const batteryPower = host.getCapabilitySafe(batteryDevice, 'measure_power');
   const minSocThresholdPercent = parseFloat(host.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD));
 
   // Use pure function to decide battery mode
@@ -185,6 +186,18 @@ async function executeOptimizationStrategy(host) {
 
   host.log(`Decision: ${decision.mode} (interval ${decision.intervalIndex})`);
   host.log(`Reason: ${decision.reason}`);
+
+  if (typeof host.updateLiveEnergyState === 'function') {
+    host.updateLiveEnergyState({
+      gridPowerW: gridPower,
+      solarPowerW: solarProductionW,
+      batteryPowerW: (typeof batteryPower === 'number' && Number.isFinite(batteryPower)) ? batteryPower : null,
+      decisionMode: decision.mode,
+      decisionReason: decision.reason,
+      source: 'strategy-execution',
+      updatedAt: now.toISOString(),
+    });
+  }
 
   if (decision.mode === BATTERY_MODE.IDLE) {
     host.log('⚠️ No action to take');

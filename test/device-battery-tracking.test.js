@@ -91,6 +91,11 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     expect(optimizer.batteryHistory[anyInterval]).toBeDefined();
     expect(optimizer.batteryHistory[anyInterval].length).toBe(1);
     expect(optimizer.batteryHistory[anyInterval][0]).toBe(250);
+
+    // Live energy state should be refreshed for the dashboard summary
+    expect(optimizer.liveEnergyState).toBeDefined();
+    expect(optimizer.liveEnergyState.batteryPowerW).toBe(250);
+    expect(optimizer.liveEnergyState.source).toBe('data-collection');
   });
 
   it('should log solar charge even when last readings are 0 and batteryPower is ~0', async () => {
@@ -445,5 +450,75 @@ describe('EnergyOptimizerDevice battery tracking integration', () => {
     // solarAvailable = 5 - 4 = 1; charged = 2 => 1 solar + 1 grid
     expect(optimizer.batteryChargeLog[0].solarKWh).toBeCloseTo(1.0, 3);
     expect(optimizer.batteryChargeLog[0].gridKWh).toBeCloseTo(1.0, 3);
+  });
+
+  it('should update daily realized savings rollups when battery discharges', async () => {
+    const optimizer = new EnergyOptimizerDevice();
+
+    optimizer.getSetting = jest.fn((key) => {
+      if (key === 'battery_device_id') return 'bat1';
+      if (key === 'min_soc_threshold') return 7;
+      return '';
+    });
+
+    optimizer.priceCache = [
+      { startsAt: '2024-01-15T12:00:00Z', total: 0.30 },
+    ];
+    optimizer.batteryChargeLog = [
+      {
+        timestamp: '2024-01-15T11:30:00.000Z',
+        type: 'charge',
+        solarKWh: 0,
+        gridKWh: 4,
+        totalKWh: 4,
+        gridPrice: 0.10,
+        soc: 60,
+      },
+    ];
+    optimizer.savingsHistory = {};
+    optimizer.setStoreValue = jest.fn(async () => {});
+    optimizer.log = jest.fn();
+    optimizer.error = jest.fn();
+
+    optimizer.lastMeterReading = {
+      solar: 0,
+      grid: 0,
+      gridImported: 0,
+      gridExported: 0,
+      battery: 4,
+      batteryDischarged: 0,
+      timestamp: new Date('2024-01-15T11:45:00Z'),
+    };
+
+    const batteryDevice = createFakeDevice({
+      id: 'bat1',
+      capabilities: {
+        'meter_power.charged': true,
+        'meter_power.discharged': true,
+        'measure_battery': true,
+      },
+      values: {
+        'meter_power.charged': 4,
+        'meter_power.discharged': 1.5,
+        'measure_battery': 50,
+      },
+      settings: { battery_capacity: '10.0' },
+    });
+
+    const fakeDrivers = {
+      'solar-panel': { getDevices: () => [] },
+      'grid-meter': { getDevices: () => [] },
+      'rct-power-storage-dc': { getDevices: () => [batteryDevice] },
+    };
+
+    optimizer.homey = { drivers: { getDriver: (id) => fakeDrivers[id] } };
+
+    await optimizer.trackBatteryCharging(0);
+
+    expect(optimizer.batteryChargeLog).toHaveLength(2);
+    expect(optimizer.batteryChargeLog[1].type).toBe('discharge');
+    expect(optimizer.savingsHistory['2024-01-15']).toBeDefined();
+    expect(optimizer.savingsHistory['2024-01-15'].realizedSavingsEur).toBeCloseTo(0.3, 2);
+    expect(optimizer.savingsHistory['2024-01-15'].dischargedKWh).toBeCloseTo(1.5, 2);
   });
 });

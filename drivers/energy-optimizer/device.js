@@ -30,6 +30,8 @@ const strategyCalculationService = require('./services/strategy-calculation');
 const batteryCostService = require('./services/battery-cost');
 const batteryStatusService = require('./services/battery-status');
 const batteryEnergyCostService = require('./services/battery-energy-cost');
+const dashboardSummaryService = require('./services/dashboard-summary');
+const savingsHistoryService = require('./services/savings-history');
 const timelineService = require('./services/timeline');
 const deviceLookupCache = require('./services/device-lookup-cache');
 const deviceUtils = require('./services/device-utils');
@@ -194,9 +196,15 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.consumptionHistory = this.getStoreValue('consumption_history') || {};
     this.batteryHistory = this.getStoreValue('battery_history') || {};
     this.batteryChargeLog = this.getStoreValue('battery_charge_log') || [];
+    this.savingsHistory = this.getStoreValue('savings_history') || {};
+    this.liveEnergyState = null;
     this.priceCache = [];
     this.currentStrategy = null;
     this.isDeleting = false;
+
+    if (!Object.keys(this.savingsHistory).length && this.batteryChargeLog.length > 0) {
+      this.savingsHistory = this.rebuildSavingsHistoryFromChargeLog(this.batteryChargeLog);
+    }
 
     // Prevent overlapping ticks + throttle store writes
     this._updateDeviceDataRunning = false;
@@ -593,6 +601,7 @@ class EnergyOptimizerDevice extends RCTDevice {
       this.queueStoreValue('consumption_history', this.consumptionHistory);
       this.queueStoreValue('battery_history', this.batteryHistory);
       this.queueStoreValue('battery_charge_log', this.batteryChargeLog);
+      this.queueStoreValue('savings_history', this.savingsHistory);
       await this.flushStoreWrites();
       this.log('Historical data saved');
     } catch (error) {
@@ -655,6 +664,30 @@ class EnergyOptimizerDevice extends RCTDevice {
    */
   async updateBatteryStatus(batteryDevice) {
     return batteryStatusService.updateBatteryStatus(this, batteryDevice);
+  }
+
+  /**
+   * Build a UI-oriented dashboard summary from the current optimizer state.
+   */
+  buildDashboardSummary(strategyOverride = null) {
+    return dashboardSummaryService.buildDashboardSummary(this, strategyOverride);
+  }
+
+  updateLiveEnergyState(nextState = {}) {
+    this.liveEnergyState = {
+      ...(this.liveEnergyState || {}),
+      ...nextState,
+      updatedAt: nextState.updatedAt || new Date().toISOString(),
+    };
+    return this.liveEnergyState;
+  }
+
+  rebuildSavingsHistoryFromChargeLog(chargeLog = this.batteryChargeLog) {
+    return savingsHistoryService.rebuildSavingsHistoryFromChargeLog(chargeLog);
+  }
+
+  getSavingsHistorySummary(now = new Date()) {
+    return savingsHistoryService.summarizeSavingsHistory(this.savingsHistory, now);
   }
 
   /**

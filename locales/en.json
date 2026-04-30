@@ -30,5 +30,234 @@
     "charging": "Battery charging from grid",
     "normal": "Battery normal mode (solar → battery → grid)",
     "constant": "Battery discharge disabled"
+  },
+  "dashboard": {
+    "charge_plan": {
+      "none": "No grid charging planned.",
+      "detected_windows": "Grid charging is planned because low-price windows were detected.",
+      "scheduled_windows": "Grid charging was scheduled for favorable price windows."
+    },
+    "current_action": {
+      "charging": {
+        "title": "Battery charging from grid",
+        "detail": "A planned low-price charging window is active right now."
+      },
+      "supplying_house": {
+        "title": "Battery is supplying the house",
+        "detail": "Stored energy is being used to avoid expensive grid consumption."
+      },
+      "holding": {
+        "title": "Battery is waiting for solar or later use",
+        "detail": "The battery is being held in standby and is not actively charging from the grid."
+      },
+      "idle": {
+        "title": "Battery is waiting",
+        "detail_with_next_charge": "No action is needed right now; the next charging window is already scheduled.",
+        "detail_without_plan": "No grid charging or discharge is currently scheduled."
+      }
+    },
+    "current_reason": {
+      "active_charge": "The current electricity price is inside a planned low-price charging window.",
+      "active_discharge": "This time was classified as expensive, so stored energy is used first.",
+      "waiting_for_later_cheap_slots": "There are cheaper price windows later in the day, so the optimizer is waiting now.",
+      "no_economic_window": "No economically useful grid-charging window was found at the moment."
+    },
+    "next_action": {
+      "next_charge_window": {
+        "title": "Next charging window",
+        "detail": "The next grid-charging phase starts when the favorable price window begins."
+      },
+      "next_expensive_window": {
+        "title": "Next expensive phase",
+        "detail": "Then the battery will be reserved for household consumption."
+      },
+      "none": {
+        "title": "No further event planned",
+        "detail": "There is currently no additional charging or discharge window in the plan."
+      }
+    },
+    "energy_flow": {
+      "default": {
+        "title": "House is being supplied directly from the grid",
+        "detail": "There is currently no active battery flow."
+      },
+      "solar_charging": {
+        "title": "Solar is charging the battery",
+        "detail": "Solar production is currently being shifted into the battery.",
+        "detail_exporting": "There is solar surplus available and the battery is absorbing part of it."
+      },
+      "grid_charging": {
+        "title": "Grid is charging the battery",
+        "detail": "Current grid import includes active battery charging from the planned charging window."
+      },
+      "solar_and_battery_support": {
+        "title": "Solar and battery are supplying the house"
+      },
+      "battery_support": {
+        "title": "Battery is supplying the house",
+        "detail": "Stored energy is reducing or replacing grid import.",
+        "detail_importing": "The battery covers part of the load and the remaining demand still comes from the grid."
+      },
+      "solar_export": {
+        "title": "Solar supplies the house and exports surplus",
+        "detail": "There is currently more solar power available than the house and battery can absorb."
+      },
+      "solar_and_grid": {
+        "title": "House uses solar and grid",
+        "detail": "Solar is active but currently does not cover the full consumption."
+      },
+      "solar_only": {
+        "title": "Solar supplies the house",
+        "detail": "Current household consumption is mostly covered directly by solar."
+      },
+      "holding_from_grid": {
+        "title": "Battery is waiting while the house uses grid power",
+        "detail": "The battery is being held back and not released for supply."
+      }
+    }
+  },
+  "settings_page": {
+    "meta": {
+      "title": "Energy Optimizer Dashboard"
+    },
+    "device_selector": {
+      "title": "Energy Optimizer Devices"
+    },
+    "sections": {
+      "dashboard_summary": "Dashboard Summary",
+      "live_details": "Live Details",
+      "technical_details": "Technical Details",
+      "price_chart": "Price Chart (Available Data)",
+      "optimization_plan": "Optimization Plan"
+    },
+    "buttons": {
+      "refresh": "Refresh Data",
+      "loading": "Loading..."
+    },
+    "loading": "Loading optimizer data...",
+    "device_list": {
+      "empty_title": "No Energy Optimizer devices found",
+      "empty_detail": "Add an Energy Optimizer device to view its optimization data.",
+      "status_unknown": "Unknown"
+    },
+    "errors": {
+      "loading_devices": "Error loading devices: {message}",
+      "loading_data": "Error loading optimizer data: {message}",
+      "device_not_found": "Device not found"
+    },
+    "status": {
+      "labels": {
+        "optimizer": "Optimizer",
+        "live_flow": "Live Flow",
+        "reason": "Reason",
+        "next_event": "Next Event"
+      },
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "no_live_flow_data": "No live flow data yet",
+      "no_data": "Unknown"
+    },
+    "summary": {
+      "eyebrow_now": "Now",
+      "no_data": "No data",
+      "unavailable": "An explanatory dashboard summary is not available for this device yet.",
+      "next_event": "Next Event",
+      "today_forecast": "Today's Forecast",
+      "next_not_scheduled": "Not scheduled",
+      "battery_line": "{soc}% SoC · Target {target}%",
+      "battery_status_unavailable": "Battery status unavailable",
+      "capacity_line": "{capacity} kWh free until target",
+      "no_capacity_available": "No charging headroom available",
+      "above_target_line": "Battery is already {delta}% above the target.",
+      "why_now": "Why now?",
+      "why_now_fallback": "No further explanation available.",
+      "next_up": "Next",
+      "no_next_event": "No further event planned",
+      "energy_flow": "Energy Flow",
+      "energy_flow_unknown": "Energy flow unknown",
+      "energy_flow_no_measurements": "No live measurements are available yet.",
+      "planned_grid_charge": "Planned Grid Charging",
+      "plan_window_subtext": "{energy} kWh at avg {price} €/kWh",
+      "no_cheap_slot": "There is currently no favorable charging window in the plan.",
+      "today_forecast_subtext": "Estimated optimization impact for the current plan.",
+      "realized": "Realized",
+      "realized_last_365": "365 days: €{amount}",
+      "realized_subtext": "Current month: €{currentMonth} · Last month: €{lastMonth}",
+      "battery": "Battery"
+    },
+    "stats": {
+      "charge_slots": "Charge Slots",
+      "expensive_periods": "Expensive Periods",
+      "avg_price": "Avg €/kWh",
+      "free_capacity": "Free kWh To Target",
+      "planned_charge": "Planned Charge kWh",
+      "forecast_demand": "Forecast Demand kWh"
+    },
+    "price_legend": {
+      "planned_grid_charge": {
+        "title": "Planned Grid Charging",
+        "detail": "Yellow highlights windows where the optimizer actively schedules grid charging."
+      },
+      "expensive_use": {
+        "title": "Expensive Consumption Time",
+        "detail": "Red marks hours where battery usage is especially valuable."
+      },
+      "cheap_window": {
+        "title": "Cheap Price Window",
+        "detail": "Blue shows low prices without an active charging plan."
+      },
+      "normal_window": {
+        "title": "Normal Price Window",
+        "detail": "Gray stands for all price windows without a special marker."
+      },
+      "average": {
+        "title": "Average Price",
+        "detail": "The dashed line shows the average across all displayed prices."
+      }
+    },
+    "price_chart": {
+      "no_price_data": "No price data available",
+      "no_upcoming_data": "No upcoming price data",
+      "avg_label": "Avg €{price}"
+    },
+    "timeline": {
+      "describe_charge_solar": "☀ Battery charging from solar",
+      "describe_charge_grid": "⚡ Battery charging from grid",
+      "battery_support": "🔋 Battery supplies the house",
+      "battery_support_with_demand": "🔋 Battery supplies the house ({demand} kWh)",
+      "no_plan": "There is no optimization plan for charging or battery usage yet.",
+      "battery_and_costs": "Battery and Energy Costs",
+      "charge_level": "Charge Level",
+      "charge_level_value": "{current}% (Target: {target}%)",
+      "stored_energy": "Stored Energy",
+      "free_capacity": "Free Capacity To Target",
+      "target_reached_warning": "⚠ Battery is already at the target",
+      "avg_battery_energy_cost_measured_label": "💰 Average battery energy cost:",
+      "avg_battery_energy_cost_estimated_label": "💰 Estimated battery energy cost:",
+      "avg_battery_energy_cost_unknown_label": "💰 Battery energy cost:",
+      "mixed_subtitle": "Partially measured: {tracked} kWh known, {unknown} kWh estimated at {unknownPrice} €/kWh.",
+      "estimated_subtitle": "⚠ The origin of the battery charge is not fully known yet.",
+      "measured_subtitle": "✅ Based on recorded charge and discharge events.",
+      "solar_share": "☀️ Solar: {energy} kWh ({percent}%)",
+      "grid_share": "⚡ Grid: {energy} kWh ({percent}%)",
+      "no_data_yet": "No data yet",
+      "no_data_info": "ℹ️ Cost tracking starts as soon as charging events are recorded for the first time.",
+      "planned_avg_charge_price": "💰 Planned average charging price:",
+      "planned_avg_charge_price_info": "This value is based on the planned mix of grid and solar charging.",
+      "next_planned_window": "Next planned charging window",
+      "planned_windows": "Planned Charging Windows",
+      "more_entries": "... and {count} more entries",
+      "load_plan_total": "Charge Plan Total",
+      "load_plan_total_value": "{energy} kWh at avg {price} €/kWh = €{total}",
+      "no_grid_charging_planned": "There is currently no grid charging planned. If energy is missing, the house will be supplied directly from the grid.",
+      "expensive_times_with_battery_use": "Expensive Times With Battery Usage",
+      "more_intervals": "... and {count} more intervals",
+      "expected_demand_expensive": "Expected demand during expensive times",
+      "expected_demand_expensive_value": "{demand} kWh @ avg {price} €/kWh",
+      "without_battery_use": "Without Battery Usage",
+      "with_battery_use": "With Battery Usage",
+      "estimated_savings": "Estimated Savings",
+      "no_usable_data": "No usable plan or battery data is available yet."
+    }
   }
 }
