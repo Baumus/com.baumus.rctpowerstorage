@@ -1,6 +1,7 @@
 'use strict';
 
 const { DEFAULT_BATTERY_CAPACITY_KWH } = require('../constants');
+const { getBatteryTargetState } = require('./battery-target-state');
 
 /**
  * Keep `host.currentStrategy.batteryStatus` in sync with latest SoC + cost info.
@@ -21,8 +22,16 @@ async function updateBatteryStatus(host, batteryDevice) {
 
     const batteryCapacity = parseFloat(batteryDevice.getSetting('battery_capacity')) || DEFAULT_BATTERY_CAPACITY_KWH;
     const maxTargetSoc = host.normalizedTargetSoc;
-    const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
-    const storedKWh = currentSoc * batteryCapacity;
+    const {
+      currentEnergyKWh,
+      availableCapacityToTargetKWh,
+      excessEnergyAboveTargetKWh,
+    } = getBatteryTargetState({
+      batteryCapacity,
+      currentSoc,
+      targetSoc: maxTargetSoc,
+    });
+    const storedKWh = currentEnergyKWh;
 
     // Get tracked energy from charge log
     const trackedCost = host.calculateBatteryEnergyCost();
@@ -37,7 +46,9 @@ async function updateBatteryStatus(host, batteryDevice) {
     host.currentStrategy.batteryStatus = {
       currentSoc,
       targetSoc: maxTargetSoc,
-      availableCapacity: maxBatteryKWh,
+      availableCapacity: availableCapacityToTargetKWh,
+      availableCapacityToTarget: availableCapacityToTargetKWh,
+      excessEnergyAboveTargetKWh,
       batteryCapacity,
       storedKWh,
       energyCost: batteryCostInfo,

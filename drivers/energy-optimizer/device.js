@@ -38,6 +38,23 @@ const deviceUtils = require('./services/device-utils');
 
 class EnergyOptimizerDevice extends RCTDevice {
 
+  sanitizeSettingsForLog(settings = {}) {
+    const sensitiveKeys = new Set([
+      'tibber_token',
+      'tibber_home_id',
+    ]);
+
+    return Object.entries(settings).reduce((result, [key, value]) => {
+      if (sensitiveKeys.has(key)) {
+        result[key] = value ? '[redacted]' : value;
+        return result;
+      }
+
+      result[key] = value;
+      return result;
+    }, {});
+  }
+
   _sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -227,7 +244,7 @@ class EnergyOptimizerDevice extends RCTDevice {
     this.pruneHistories(forecastDays);
 
     // Log current settings for debugging
-    this.log('Current settings:', this.getSettings());
+    this.log('Current settings:', this.sanitizeSettingsForLog(this.getSettings()));
 
     // Start optimizer if enabled
     if (this.getCapabilityValue('onoff')) {
@@ -408,7 +425,6 @@ class EnergyOptimizerDevice extends RCTDevice {
     // Debug logging
     this.log('Validating configuration:', {
       hasToken: !!tibberToken,
-      tokenLength: tibberToken ? tibberToken.length : 0,
       hasHomeId: !!tibberHomeId,
       hasBatteryId: !!batteryDeviceId,
     });

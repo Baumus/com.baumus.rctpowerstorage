@@ -51,6 +51,50 @@ function findNextInterval(intervals, now) {
     .sort((left, right) => left.startsAt - right.startsAt)[0]?.interval || null;
 }
 
+function getEarlierInterval(leftInterval, rightInterval) {
+  const leftDate = getIntervalDate(leftInterval);
+  const rightDate = getIntervalDate(rightInterval);
+
+  if (!leftDate) return rightInterval || null;
+  if (!rightDate) return leftInterval || null;
+
+  return leftDate <= rightDate ? leftInterval : rightInterval;
+}
+
+function getIntervalEndDate(interval) {
+  if (!interval) return null;
+
+  if (interval.endsAt) {
+    const explicitEnd = new Date(interval.endsAt);
+    if (!Number.isNaN(explicitEnd.getTime())) {
+      return explicitEnd;
+    }
+  }
+
+  const startsAt = getIntervalDate(interval);
+  if (!startsAt) return null;
+
+  return new Date(startsAt.getTime() + (15 * 60 * 1000));
+}
+
+function getPlanHorizonSummary(host, strategy) {
+  const allIntervals = [
+    ...(Array.isArray(strategy?.chargeIntervals) ? strategy.chargeIntervals : []),
+    ...(Array.isArray(strategy?.dischargeIntervals) ? strategy.dischargeIntervals : []),
+  ];
+
+  const latestEnd = allIntervals
+    .map((interval) => getIntervalEndDate(interval))
+    .filter((value) => value instanceof Date && !Number.isNaN(value.getTime()))
+    .sort((left, right) => right - left)[0] || null;
+
+  return {
+    hasPlan: !!latestEnd,
+    endsAt: latestEnd ? latestEnd.toISOString() : null,
+    displayTime: latestEnd ? formatDisplayDateTime(host, latestEnd) : null,
+  };
+}
+
 function formatDisplayDateTime(host, value) {
   if (!value) return null;
 
@@ -73,8 +117,12 @@ function getBatterySummary(strategy) {
 
   const currentSocPercent = (batteryStatus.currentSoc || 0) * 100;
   const targetSocPercent = (batteryStatus.targetSoc || 0) * 100;
-  const freeCapacityToTargetKWh = Math.max(0, batteryStatus.availableCapacity || 0);
+  const freeCapacityToTargetKWh = Math.max(
+    0,
+    batteryStatus.availableCapacityToTarget ?? batteryStatus.availableCapacity ?? 0,
+  );
   const aboveTargetDeltaPercent = Math.max(0, currentSocPercent - targetSocPercent);
+  const aboveTargetBufferKWh = Math.max(0, batteryStatus.excessEnergyAboveTargetKWh || 0);
 
   return {
     currentSocPercent: Math.round(currentSocPercent * 10) / 10,
@@ -82,6 +130,7 @@ function getBatterySummary(strategy) {
     storedKWh: batteryStatus.storedKWh || 0,
     freeCapacityToTargetKWh,
     aboveTargetDeltaPercent: Math.round(aboveTargetDeltaPercent * 10) / 10,
+    aboveTargetBufferKWh: Math.round(aboveTargetBufferKWh * 100) / 100,
     avgEnergyPriceEurPerKWh: batteryStatus.energyCost?.avgPrice || null,
     energyPriceIsEstimated: !!batteryStatus.energyCost?.isEstimated,
   };
@@ -111,6 +160,24 @@ function getChargePlanSummary(strategy, nextChargeInterval) {
     totalEnergyKWh: plannedCharging.totalEnergyKWh || 0,
     avgPriceEurPerKWh: plannedCharging.avgPriceEurPerKWh || null,
     nextStart: nextChargeInterval?.startsAt || null,
+  };
+}
+
+function getDischargePlanSummary(strategy, nextDischargeInterval) {
+  const dischargeIntervals = Array.isArray(strategy?.dischargeIntervals) ? strategy.dischargeIntervals : [];
+
+  if (dischargeIntervals.length === 0) {
+    return {
+      hasPlan: false,
+      windowCount: 0,
+      nextStart: null,
+    };
+  }
+
+  return {
+    hasPlan: true,
+    windowCount: dischargeIntervals.length,
+    nextStart: nextDischargeInterval?.startsAt || null,
   };
 }
 
@@ -173,7 +240,10 @@ function getCurrentReason(host, strategy, activeChargeInterval, activeDischargeI
 
 function getNextAction(host, strategy, now) {
   const nextChargeInterval = findNextInterval(strategy?.chargeIntervals, now);
-  if (nextChargeInterval) {
+  const nextDischargeInterval = findNextInterval(strategy?.dischargeIntervals, now);
+  const nextInterval = getEarlierInterval(nextChargeInterval, nextDischargeInterval);
+
+  if (nextInterval === nextChargeInterval && nextChargeInterval) {
     return {
       key: 'next-charge-window',
       title: translate(host, 'dashboard.next_action.next_charge_window.title', 'Naechstes Ladefenster'),
@@ -183,8 +253,7 @@ function getNextAction(host, strategy, now) {
     };
   }
 
-  const nextDischargeInterval = findNextInterval(strategy?.dischargeIntervals, now);
-  if (nextDischargeInterval) {
+  if (nextInterval === nextDischargeInterval && nextDischargeInterval) {
     return {
       key: 'next-expensive-window',
       title: translate(host, 'dashboard.next_action.next_expensive_window.title', 'Naechste teure Phase'),
@@ -278,6 +347,7 @@ function buildDashboardSummary(host, strategyOverride = null) {
   const activeChargeInterval = findActiveInterval(strategy.chargeIntervals, now);
   const activeDischargeInterval = findActiveInterval(strategy.dischargeIntervals, now);
   const nextChargeInterval = findNextInterval(strategy.chargeIntervals, now);
+  const nextDischargeInterval = findNextInterval(strategy.dischargeIntervals, now);
   const realizedSavings = summarizeSavingsHistory(host.savingsHistory, now);
 
   return {
@@ -303,6 +373,8 @@ function buildDashboardSummary(host, strategyOverride = null) {
           : translate(host, 'dashboard.charge_plan.scheduled_windows', 'Netzladung wurde fuer guenstige Preisfenster eingeplant.'),
       };
     }()),
+    dischargePlan: getDischargePlanSummary(strategy, nextDischargeInterval),
+    planHorizon: getPlanHorizonSummary(host, strategy),
     savings: {
       todayForecastEur: strategy?.economics?.savings ?? strategy?.savings ?? 0,
       realized: realizedSavings,

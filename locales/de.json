@@ -2,8 +2,8 @@
   "error": {
     "missing_token": "Tibber API-Token fehlt",
     "missing_home_id": "Tibber Home-ID fehlt",
-    "missing_battery_id": "Batterie-Geraete-ID fehlt",
-    "battery_not_found": "Batteriegeraet nicht gefunden",
+    "missing_battery_id": "Batterie-Geräte-ID fehlt",
+    "battery_not_found": "Batteriegerät nicht gefunden",
     "home_not_found": "Tibber-Zuhause nicht gefunden"
   },
   "status": {
@@ -14,13 +14,13 @@
     "error_config": "Konfigurationsfehler",
     "error": "Fehler",
     "fetching_prices": "Lade Preise...",
-    "charging": "Laedt",
+    "charging": "Lädt",
     "monitoring": "Beobachtet",
     "not_scheduled": "Nicht geplant",
     "no_data": "Keine Preisdaten",
     "no_expensive_periods": "Keine teuren Zeitfenster gefunden",
-    "no_cheap_slots": "Keine guenstigen Zeitfenster verfuegbar",
-    "discharging": "Entlaedt",
+    "no_cheap_slots": "Keine günstigen Zeitfenster verfügbar",
+    "discharging": "Entlädt",
     "grid_charging": "Netzladung aktiv",
     "battery_use_enabled": "Batterienutzung aktiv",
     "solar_charging": "Solarladung (ohne Entladung)"
@@ -33,42 +33,42 @@
   "dashboard": {
     "charge_plan": {
       "none": "Keine Netzladung geplant.",
-      "detected_windows": "Netzladung ist geplant, weil guenstige Preisfenster erkannt wurden.",
-      "scheduled_windows": "Netzladung wurde fuer guenstige Preisfenster eingeplant."
+      "detected_windows": "Netzladung ist geplant, weil günstige Preisfenster erkannt wurden.",
+      "scheduled_windows": "Netzladung wurde für günstige Preisfenster eingeplant."
     },
     "current_action": {
       "charging": {
-        "title": "Batterie laedt aus dem Netz",
-        "detail": "Gerade laeuft ein geplantes guenstiges Ladefenster."
+        "title": "Batterie lädt aus dem Netz",
+        "detail": "Gerade läuft ein geplantes günstiges Ladefenster."
       },
       "supplying_house": {
         "title": "Batterie versorgt das Haus",
         "detail": "Gespeicherte Energie wird genutzt, um teuren Netzbezug zu vermeiden."
       },
       "holding": {
-        "title": "Batterie wartet auf Solar oder spaetere Nutzung",
-        "detail": "Die Batterie wird im Haltemodus geschuetzt und nicht aktiv aus dem Netz geladen."
+        "title": "Batterie wartet auf Solar oder spätere Nutzung",
+        "detail": "Die Batterie wird im Haltemodus geschützt und nicht aktiv aus dem Netz geladen."
       },
       "idle": {
         "title": "Batterie wartet",
-        "detail_with_next_charge": "Aktuell ist kein Eingriff noetig, das naechste Ladefenster ist bereits geplant.",
+        "detail_with_next_charge": "Aktuell ist kein Eingriff nötig, das nächste Ladefenster ist bereits geplant.",
         "detail_without_plan": "Aktuell ist weder Netzladung noch Entladung eingeplant."
       }
     },
     "current_reason": {
-      "active_charge": "Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.",
+      "active_charge": "Der aktuelle Strompreis liegt in einem geplanten günstigen Ladefenster.",
       "active_discharge": "Die aktuelle Zeit wurde als teuer eingestuft, deshalb wird gespeicherte Energie bevorzugt genutzt.",
-      "waiting_for_later_cheap_slots": "Es gibt guenstige Preisfenster spaeter am Tag, daher wird jetzt gewartet.",
+      "waiting_for_later_cheap_slots": "Es gibt günstige Preisfenster später am Tag, daher wird jetzt gewartet.",
       "no_economic_window": "Es wurde aktuell kein wirtschaftlich sinnvolles Netzladefenster gefunden."
     },
     "next_action": {
       "next_charge_window": {
-        "title": "Naechstes Ladefenster",
-        "detail": "Die naechste Netzladung startet, sobald das guenstige Preisfenster beginnt."
+        "title": "Nächstes Ladefenster",
+        "detail": "Die nächste Netzladung startet, sobald das günstige Preisfenster beginnt."
       },
       "next_expensive_window": {
-        "title": "Naechste teure Phase",
-        "detail": "Dann wird die Batterie bevorzugt fuer den Hausverbrauch bereitgehalten."
+        "title": "Nächste teure Phase",
+        "detail": "Dann wird die Batterie bevorzugt für den Hausverbrauch bereitgehalten."
       },
       "none": {
         "title": "Kein weiteres Ereignis geplant",
@@ -81,13 +81,13 @@
         "detail": "Es liegt aktuell kein aktiver Batteriefluss vor."
       },
       "solar_charging": {
-        "title": "Solar laedt die Batterie",
+        "title": "Solar lädt die Batterie",
         "detail": "Solarproduktion wird gerade in die Batterie verschoben.",
-        "detail_exporting": "Es ist Solarueberschuss vorhanden, die Batterie nimmt einen Teil davon auf."
+        "detail_exporting": "Es ist Solarüberschuss vorhanden, die Batterie nimmt einen Teil davon auf."
       },
       "grid_charging": {
-        "title": "Netz laedt die Batterie",
-        "detail": "Der aktuelle Netzbezug enthaelt aktive Batterieladung aus dem geplanten Ladefenster."
+        "title": "Netz lädt die Batterie",
+        "detail": "Der aktuelle Netzbezug enthält aktive Batterieladung aus dem geplanten Ladefenster."
       },
       "solar_and_battery_support": {
         "title": "Solar und Batterie versorgen das Haus"
@@ -95,15 +95,15 @@
       "battery_support": {
         "title": "Batterie versorgt das Haus",
         "detail": "Gespeicherte Energie reduziert oder ersetzt den Netzbezug.",
-        "detail_importing": "Die Batterie deckt einen Teil der Last, zusaetzlicher Bedarf kommt noch aus dem Netz."
+        "detail_importing": "Die Batterie deckt einen Teil der Last, zusätzlicher Bedarf kommt noch aus dem Netz."
       },
       "solar_export": {
-        "title": "Solar versorgt das Haus und speist Ueberschuss ein",
-        "detail": "Aktuell ist mehr Solarstrom verfuegbar als Haus und Batterie aufnehmen."
+        "title": "Solar versorgt das Haus und speist Überschuss ein",
+        "detail": "Aktuell ist mehr Solarstrom verfügbar als Haus und Batterie aufnehmen."
       },
       "solar_and_grid": {
         "title": "Haus nutzt Solar und Netz",
-        "detail": "Solar ist aktiv, reicht aber momentan nicht fuer den gesamten Verbrauch."
+        "detail": "Solar ist aktiv, reicht aber momentan nicht für den gesamten Verbrauch."
       },
       "solar_only": {
         "title": "Solar versorgt das Haus",
@@ -120,36 +120,36 @@
       "title": "Energy Optimizer Dashboard"
     },
     "device_selector": {
-      "title": "Energy Optimizer Geraete"
+      "title": "Energy Optimizer Geräte"
     },
     "sections": {
       "dashboard_summary": "Dashboard-Zusammenfassung",
       "live_details": "Live-Details",
       "technical_details": "Technische Details",
-      "price_chart": "Preisdiagramm (verfuegbare Daten)",
+      "price_chart": "Preisdiagramm (verfügbare Daten)",
       "optimization_plan": "Optimierungsplan"
     },
     "buttons": {
       "refresh": "Daten aktualisieren",
-      "loading": "Laedt..."
+      "loading": "Lädt..."
     },
     "loading": "Optimizer-Daten werden geladen...",
     "device_list": {
-      "empty_title": "Keine Energy Optimizer Geraete gefunden",
-      "empty_detail": "Fuege ein Energy Optimizer Geraet hinzu, um die Optimierungsdaten zu sehen.",
+      "empty_title": "Keine Energy Optimizer Geräte gefunden",
+      "empty_detail": "Füge ein Energy Optimizer Gerät hinzu, um die Optimierungsdaten zu sehen.",
       "status_unknown": "Unbekannt"
     },
     "errors": {
-      "loading_devices": "Fehler beim Laden der Geraete: {message}",
+      "loading_devices": "Fehler beim Laden der Geräte: {message}",
       "loading_data": "Fehler beim Laden der Optimizer-Daten: {message}",
-      "device_not_found": "Geraet nicht gefunden"
+      "device_not_found": "Gerät nicht gefunden"
     },
     "status": {
       "labels": {
         "optimizer": "Optimizer",
         "live_flow": "Live-Fluss",
         "reason": "Grund",
-        "next_event": "Naechstes Ereignis"
+        "next_event": "Nächstes Ereignis"
       },
       "enabled": "Aktiv",
       "disabled": "Deaktiviert",
@@ -157,28 +157,26 @@
       "no_data": "Unbekannt"
     },
     "summary": {
-      "eyebrow_now": "Jetzt",
+      "eyebrow_current_battery_mode": "Aktueller Batteriemodus",
       "no_data": "Keine Daten",
-      "unavailable": "Eine erklaerende Dashboard-Zusammenfassung ist fuer dieses Geraet noch nicht verfuegbar.",
-      "next_event": "Naechstes Ereignis",
+      "unavailable": "Eine erklärende Dashboard-Zusammenfassung ist für dieses Gerät noch nicht verfügbar.",
+      "next_event": "Nächstes Ereignis",
       "today_forecast": "Heutige Prognose",
       "next_not_scheduled": "Nicht geplant",
-      "battery_line": "{soc}% SoC · Ziel {target}%",
-      "battery_status_unavailable": "Batteriestatus nicht verfuegbar",
-      "capacity_line": "{capacity} kWh frei bis zum Ziel",
-      "no_capacity_available": "Kein Ladeplatz verfuegbar",
-      "above_target_line": "Batterie liegt {delta}% ueber dem Zielwert.",
-      "why_now": "Warum gerade?",
-      "why_now_fallback": "Keine weitere Begruendung verfuegbar.",
-      "next_up": "Als Naechstes",
+      "battery_line": "{soc}% SoC · Ziel-SoC {target}%",
+      "battery_status_unavailable": "Batteriestatus nicht verfügbar",
+      "capacity_line": "Freier Ladeplatz bis Ziel-SoC: {capacity} kWh",
+      "no_capacity_available": "Kein freier Ladeplatz bis zum Ziel-SoC",
+      "above_target_line": "Batterie liegt {delta}% über dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfügbar.",
+      "current_energy_flow": "Aktueller Energiefluss",
+      "next_up": "Als Nächstes",
       "no_next_event": "Kein weiteres Ereignis geplant",
-      "energy_flow": "Energiefluss",
       "energy_flow_unknown": "Energiefluss unbekannt",
       "energy_flow_no_measurements": "Es liegen noch keine Live-Messwerte vor.",
-      "planned_grid_charge": "Geplante Netzladung",
       "plan_window_subtext": "{energy} kWh zu Ø {price} €/kWh",
-      "no_cheap_slot": "Aktuell kein guenstiges Ladefenster im Plan.",
-      "today_forecast_subtext": "Geschaetzte Optimierungswirkung fuer den aktuellen Plan.",
+      "discharge_plan_subtext": "{count} Entladefenster geplant · Erste Phase: {time}",
+      "today_forecast_subtext": "Geschätzte Optimierungswirkung für den aktuellen Plan.",
+      "today_forecast_until_subtext": "Geschätzte Optimierungswirkung für den aktuellen Plan bis {time}.",
       "realized": "Realisiert",
       "realized_last_365": "365 Tage: €{amount}",
       "realized_subtext": "Aktueller Monat: €{currentMonth} · Letzter Monat: €{lastMonth}",
@@ -202,21 +200,21 @@
         "detail": "Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist."
       },
       "cheap_window": {
-        "title": "Guenstige Preiszeit",
-        "detail": "Blau zeigt guenstige Preise ohne aktive Ladeplanung."
+        "title": "Günstige Preiszeit",
+        "detail": "Blau zeigt günstige Preise ohne aktive Ladeplanung."
       },
       "normal_window": {
         "title": "Normale Preiszeit",
-        "detail": "Grau steht fuer alle Preisfenster ohne besondere Markierung."
+        "detail": "Grau steht für alle Preisfenster ohne besondere Markierung."
       },
       "average": {
         "title": "Durchschnittspreis",
-        "detail": "Die gestrichelte Linie zeigt den Mittelwert ueber alle dargestellten Preise."
+        "detail": "Die gestrichelte Linie zeigt den Mittelwert über alle dargestellten Preise."
       }
     },
     "price_chart": {
-      "no_price_data": "Keine Preisdaten verfuegbar",
-      "no_upcoming_data": "Keine kommenden Preisdaten verfuegbar",
+      "no_price_data": "Keine Preisdaten verfügbar",
+      "no_upcoming_data": "Keine kommenden Preisdaten verfügbar",
       "avg_label": "Ø €{price}"
     },
     "timeline": {
@@ -224,39 +222,48 @@
       "describe_charge_grid": "⚡ Batterie aus dem Netz laden",
       "battery_support": "🔋 Batterie versorgt das Haus",
       "battery_support_with_demand": "🔋 Batterie versorgt das Haus ({demand} kWh)",
-      "no_plan": "Aktuell gibt es noch keinen Optimierungsplan fuer Laden oder Batterienutzung.",
+        "no_plan": "Aktuell gibt es noch keinen Optimierungsplan für Laden oder Batterienutzung.",
+        "planner_kicker_overview": "Planübersicht",
+        "planner_kicker_plan": "Optimierungsplan",
+        "planner_kicker_usage": "Batterienutzung",
       "battery_and_costs": "Batterie und Energiekosten",
+        "battery_and_costs_note": "Die wichtigsten Speicher- und Kostendaten für den aktuellen Optimierungsplan.",
       "charge_level": "Ladestand",
-      "charge_level_value": "{current}% (Target: {target}%)",
+        "charge_level_value": "{current}% (Ziel: {target}%)",
       "stored_energy": "Gespeicherte Energie",
+        "stored_energy_subtext": "Aktuell im Speicher verfügbar und für den Plan nutzbar.",
       "free_capacity": "Freier Ladeplatz bis Ziel",
       "target_reached_warning": "⚠️ Batterie liegt bereits am Zielwert",
+        "free_capacity_subtext": "Diese Energiemenge könnte der Optimizer noch bis zum Ziel-SoC einplanen.",
+        "free_capacity_zero_subtext": "Weitere Ladung ist im Zielbereich aktuell nicht vorgesehen.",
       "avg_battery_energy_cost_measured_label": "💰 Durchschnittlicher Energiepreis in der Batterie:",
-      "avg_battery_energy_cost_estimated_label": "💰 Geschaetzter Energiepreis in der Batterie:",
+        "avg_battery_energy_cost_estimated_label": "💰 Geschätzter Energiepreis in der Batterie:",
       "avg_battery_energy_cost_unknown_label": "💰 Energiepreis in der Batterie:",
-      "mixed_subtitle": "Teilweise gemessen: {tracked} kWh bekannt, {unknown} kWh geschaetzt zu {unknownPrice} €/kWh.",
-      "estimated_subtitle": "⚠️ Der Ursprung der Batterieladung ist noch nicht vollstaendig bekannt.",
-      "measured_subtitle": "✅ Basierend auf den erfassten Lade- und Entladevorgaengen.",
+        "mixed_subtitle": "Teilweise gemessen: {tracked} kWh bekannt, {unknown} kWh geschätzt zu {unknownPrice} €/kWh.",
+        "estimated_subtitle": "⚠️ Der Ursprung der Batterieladung ist noch nicht vollständig bekannt.",
+        "measured_subtitle": "✅ Basierend auf den erfassten Lade- und Entladevorgängen.",
       "solar_share": "☀️ Solar: {energy} kWh ({percent}%)",
       "grid_share": "⚡ Grid: {energy} kWh ({percent}%)",
       "no_data_yet": "Noch keine Daten",
-      "no_data_info": "ℹ️ Die Kostenerfassung beginnt, sobald erstmals Ladevorgaenge erfasst werden.",
+        "no_data_info": "ℹ️ Die Kostenerfassung beginnt, sobald erstmals Ladevorgänge erfasst werden.",
       "planned_avg_charge_price": "💰 Geplanter durchschnittlicher Ladepreis:",
       "planned_avg_charge_price_info": "Dieser Wert basiert auf dem geplanten Mix aus Netz- und Solarladung.",
-      "next_planned_window": "Naechstes geplantes Ladefenster",
+        "next_planned_window": "Nächstes geplantes Ladefenster",
       "planned_windows": "Geplante Ladefenster",
-      "more_entries": "... und {count} weitere Eintraege",
+        "planned_windows_note": "Hier siehst du, wann der Optimizer gezielt günstige Energie für den Speicher einplant.",
+        "more_entries": "... und {count} weitere Einträge",
       "load_plan_total": "Ladeplan gesamt",
       "load_plan_total_value": "{energy} kWh zu Ø {price} €/kWh = €{total}",
       "no_grid_charging_planned": "Aktuell ist keine Netzladung geplant. Wenn Energie fehlt, wird das Haus direkt aus dem Netz versorgt.",
       "expensive_times_with_battery_use": "Teure Zeiten mit Batterienutzung",
+        "expensive_times_note": "Diese Phasen sind wirtschaftlich genug, um gespeicherte Energie gezielt für den Hausverbrauch zu nutzen.",
       "more_intervals": "... und {count} weitere Intervalle",
       "expected_demand_expensive": "Erwarteter Bedarf in teuren Zeiten",
       "expected_demand_expensive_value": "{demand} kWh @ avg {price} €/kWh",
       "without_battery_use": "Ohne Batterienutzung",
       "with_battery_use": "Mit Batterienutzung",
-      "estimated_savings": "Geschaetzte Einsparung",
-      "no_usable_data": "Es sind noch keine verwertbaren Plan- oder Batteriedaten verfuegbar."
+        "estimated_savings": "Geschätzte Einsparung",
+        "no_usable_data": "Es sind noch keine verwertbaren Plan- oder Batteriedaten verfügbar."
     }
   }
 }

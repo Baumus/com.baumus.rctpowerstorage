@@ -13,6 +13,7 @@ const {
   DEFAULT_MIN_SOC_THRESHOLD,
   DEFAULT_MIN_PROFIT_CENT_PER_KWH,
 } = require('../constants');
+const { getBatteryTargetState } = require('./battery-target-state');
 
 // Try to load LP solver from submodule
 let lpSolver;
@@ -146,7 +147,16 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
   const energyPerInterval = chargePowerKW * INTERVAL_HOURS;
   const maxTargetSoc = host.normalizedTargetSoc || (DEFAULT_TARGET_SOC / 100);
   const BATTERY_EFFICIENCY_LOSS = host.normalizedEfficiencyLoss;
-  const maxBatteryKWh = batteryCapacity * (maxTargetSoc - currentSoc);
+  const {
+    currentEnergyKWh,
+    targetEnergyKWh,
+    availableCapacityToTargetKWh,
+    excessEnergyAboveTargetKWh,
+  } = getBatteryTargetState({
+    batteryCapacity,
+    currentSoc,
+    targetSoc: maxTargetSoc,
+  });
 
   // Economic inputs / constraints (no new settings):
   // - min_soc_threshold is the lower SoC bound
@@ -155,8 +165,7 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
   const minSocThresholdPercent = Number(host.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD));
   const minSocThreshold = Math.max(0, Math.min(100, minSocThresholdPercent)) / 100;
   const configuredMinEnergyKWh = batteryCapacity * minSocThreshold;
-  const currentEnergyKWh = currentSoc * batteryCapacity;
-  const maxEnergyKWh = maxTargetSoc * batteryCapacity;
+  const maxEnergyKWh = targetEnergyKWh;
   const minEnergyKWh = Math.min(
     Math.min(configuredMinEnergyKWh, maxEnergyKWh),
     currentEnergyKWh,
@@ -172,8 +181,11 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
   const minProfitEurPerKWh = Number.isFinite(minProfitCent) ? Math.max(0, minProfitCent) / 100 : 0;
 
   host.log('\n=== BATTERY STATUS ===');
-  host.log(`Current SoC: ${(currentSoc * 100).toFixed(1)}%, Max target: ${(maxTargetSoc * 100).toFixed(1)}%`);
-  host.log(`Available capacity: ${maxBatteryKWh.toFixed(2)} kWh (can charge from ${(currentSoc * 100).toFixed(1)}% to ${(maxTargetSoc * 100).toFixed(1)}%)`);
+  host.log(`Current SoC: ${(currentSoc * 100).toFixed(1)}%, Optimization target: ${(maxTargetSoc * 100).toFixed(1)}%`);
+  host.log(`Charging headroom to target: ${availableCapacityToTargetKWh.toFixed(2)} kWh (optimizer charges only up to ${(maxTargetSoc * 100).toFixed(1)}%)`);
+  if (excessEnergyAboveTargetKWh > 0) {
+    host.log(`Above-target reserve: ${excessEnergyAboveTargetKWh.toFixed(2)} kWh (kept available as discharge buffer, no further charging optimization)`);
+  }
   host.log(`Charge power: ${chargePowerKW} kW = ${energyPerInterval.toFixed(2)} kWh per interval`);
   host.log(`Battery efficiency loss: ${(BATTERY_EFFICIENCY_LOSS * 100).toFixed(1)}%`);
 
@@ -234,7 +246,9 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
       batteryStatus: {
         currentSoc,
         targetSoc: maxTargetSoc,
-        availableCapacity: maxBatteryKWh,
+        availableCapacity: availableCapacityToTargetKWh,
+        availableCapacityToTarget: availableCapacityToTargetKWh,
+        excessEnergyAboveTargetKWh,
         batteryCapacity,
         storedKWh,
         energyCost: batteryCostInfo,
@@ -278,6 +292,9 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
   }
 
   // LP-only mode: if LP fails/unavailable, do not fall back to heuristic.
+  if (availableCapacityToTargetKWh < 0.01 && excessEnergyAboveTargetKWh > 0) {
+    host.log(`No target-window charging planned: target SoC already reached or exceeded. Keeping ${excessEnergyAboveTargetKWh.toFixed(2)} kWh above target available as discharge buffer in normal mode.`);
+  }
   host.log('LP optimization unavailable/failed; using no-op strategy.');
 
   host.currentStrategy = {
@@ -294,7 +311,9 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
     batteryStatus: {
       currentSoc,
       targetSoc: maxTargetSoc,
-      availableCapacity: maxBatteryKWh,
+      availableCapacity: availableCapacityToTargetKWh,
+      availableCapacityToTarget: availableCapacityToTargetKWh,
+      excessEnergyAboveTargetKWh,
       batteryCapacity,
       storedKWh,
       energyCost: batteryCostInfo,

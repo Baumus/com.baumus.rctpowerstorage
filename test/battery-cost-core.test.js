@@ -1,5 +1,7 @@
 'use strict';
 
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('../drivers/energy-optimizer/constants');
+
 const {
   calculateBatteryEnergyCost,
   createChargeEntry,
@@ -25,6 +27,7 @@ describe('battery-cost-core', () => {
       expect(entry.gridKWh).toBe(2.0); // Rest from grid (5 - 3)
       expect(entry.totalKWh).toBe(5.0);
       expect(entry.gridPrice).toBe(0.25);
+      expect(entry.solarPrice).toBe(SOLAR_FEED_IN_TARIFF_EUR_PER_KWH);
       expect(entry.soc).toBe(50);
       expect(entry.timestamp).toBe('2024-01-15T10:00:00.000Z');
     });
@@ -61,6 +64,7 @@ describe('battery-cost-core', () => {
       expect(entry.solarKWh).toBe(0);
       expect(entry.gridKWh).toBe(2.0);
       expect(entry.gridPrice).toBe(0);
+      expect(entry.solarPrice).toBe(SOLAR_FEED_IN_TARIFF_EUR_PER_KWH);
       expect(entry.soc).toBe(0);
       expect(entry.timestamp).toBeDefined();
     });
@@ -268,8 +272,9 @@ describe('battery-cost-core', () => {
       expect(result.totalKWh).toBe(3.0);
       expect(result.solarKWh).toBe(3.0);
       expect(result.gridKWh).toBe(0);
-      expect(result.avgPrice).toBe(0); // All solar is free
-      expect(result.totalCost).toBe(0);
+      expect(result.avgPrice).toBeCloseTo(SOLAR_FEED_IN_TARIFF_EUR_PER_KWH, 6);
+      expect(result.totalCost).toBeCloseTo(3.0 * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH, 6);
+      expect(result.solarOnlyAvgPrice).toBeCloseTo(SOLAR_FEED_IN_TARIFF_EUR_PER_KWH, 6);
       expect(result.solarPercent).toBe(100);
       expect(result.gridPercent).toBe(0);
     });
@@ -288,9 +293,10 @@ describe('battery-cost-core', () => {
       expect(result.totalKWh).toBe(5.0);
       expect(result.solarKWh).toBe(3.0);
       expect(result.gridKWh).toBe(2.0);
-      expect(result.totalCost).toBe(0.6); // 2 * 0.30
-      expect(result.avgPrice).toBe(0.12); // 0.6 / 5.0 (weighted avg)
-      expect(result.gridOnlyAvgPrice).toBe(0.30); // Grid portion only
+      expect(result.totalCost).toBeCloseTo((2 * 0.30) + (3 * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH), 6);
+      expect(result.avgPrice).toBeCloseTo((((2 * 0.30) + (3 * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH)) / 5.0), 6);
+      expect(result.gridOnlyAvgPrice).toBeCloseTo(0.30, 6); // Grid portion only
+      expect(result.solarOnlyAvgPrice).toBeCloseTo(SOLAR_FEED_IN_TARIFF_EUR_PER_KWH, 6);
       expect(result.solarPercent).toBe(60);
       expect(result.gridPercent).toBe(40);
     });
@@ -314,7 +320,7 @@ describe('battery-cost-core', () => {
       expect(result.totalKWh).toBe(3.0); // 5 charged - 2 discharged
       expect(result.solarKWh).toBeCloseTo(1.2, 2); // 2 - (2 * 2/5)
       expect(result.gridKWh).toBeCloseTo(1.8, 2); // 3 - (2 * 3/5)
-      expect(result.totalCost).toBeCloseTo(0.36, 2); // 0.6 - (2 * 0.12)
+      expect(result.totalCost).toBeCloseTo(0.444, 3);
     });
 
     it('should handle multiple charges at different prices', () => {

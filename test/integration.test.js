@@ -1,5 +1,7 @@
 'use strict';
 
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('../drivers/energy-optimizer/constants');
+
 /**
  * Integration Tests - Light
  * 
@@ -107,6 +109,52 @@ describe('Integration Tests - Light', () => {
       expect(decisionCharge.mode).toBe(BATTERY_MODE.CHARGE);
       expect(decisionDischarge.mode).toBe(BATTERY_MODE.NORMAL);
     });
+
+    it('should remain solvable above target SoC and still plan a later discharge window', () => {
+      if (!lpSolver) {
+        // eslint-disable-next-line jest/no-conditional-expect
+        expect(lpSolver).not.toBeNull();
+        return;
+      }
+
+      const priceData = [
+        { startsAt: '2025-01-01T12:00:00.000Z', total: 0.12 },
+        { startsAt: '2025-01-01T18:00:00.000Z', total: 0.35 },
+      ];
+
+      const indexedData = enrichPriceData(priceData);
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.95,
+        targetSoc: 0.8,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+        minEnergyKWh: 0,
+        minProfitEurPerKWh: 0,
+        batteryCostEurPerKWh: 0.07,
+      };
+
+      const history = {
+        productionHistory: {
+          [indexedData[0].intervalOfDay]: [4000, 4000, 4000],
+          [indexedData[1].intervalOfDay]: [0, 0, 0],
+        },
+        batteryHistory: {},
+        consumptionHistory: {
+          [indexedData[0].intervalOfDay]: [-4000, -4000, -4000],
+          [indexedData[1].intervalOfDay]: [4000, 4000, 4000],
+        },
+      };
+
+      const strategy = optimizeStrategyWithLp(indexedData, params, history, { lpSolver });
+
+      expect(strategy).not.toBeNull();
+      expect(strategy.dischargeIntervals.length).toBeGreaterThan(0);
+      expect(strategy.dischargeIntervals[0].index).toBe(1);
+      expect(strategy.totalDischargeKWh).toBeGreaterThan(0);
+    });
   });
 
   describe('Battery Cost Tracking Integration', () => {
@@ -184,11 +232,10 @@ describe('Integration Tests - Light', () => {
       expect(entry1.solarKWh).toBeCloseTo(2.0, 1);
       expect(entry1.gridKWh).toBeCloseTo(2.0, 1);
 
-      // Average cost should be weighted: (2*0.05 + 2*0.25) / 4 = 0.15
-      // Note: Solar energy has assumed cost of €0.05/kWh
+      // Average cost should be weighted with the same solar opportunity cost used by the optimizer.
       const costResult = calculateBatteryEnergyCost(chargeLog);
       expect(costResult).toBeDefined();
-      expect(costResult.avgPrice).toBeLessThan(0.25); // Should be lower due to solar
+      expect(costResult.avgPrice).toBeCloseTo(((2 * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH) + (2 * 0.25)) / 4, 6);
       expect(costResult.solarKWh).toBeCloseTo(2.0, 1);
       expect(costResult.gridKWh).toBeCloseTo(2.0, 1);
     });

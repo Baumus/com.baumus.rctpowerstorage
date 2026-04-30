@@ -1,5 +1,7 @@
 'use strict';
 
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('./constants');
+
 /**
  * Battery cost calculation logic - pure functions for tracking battery energy costs
  * This module tracks charge/discharge using proportional composition accounting.
@@ -26,14 +28,18 @@ function calculateBatteryEnergyCost(chargeLog, options = {}) {
   // Calculate net energy and costs by summing all charge/discharge events
   let netSolarKWh = 0;
   let netGridKWh = 0;
-  let totalGridCost = 0;
+  let totalEnergyCost = 0;
 
   for (const entry of chargeLog) {
     if (entry.type === 'charge') {
       // Charging: add solar and grid energy
-      netSolarKWh += entry.solarKWh || 0;
-      netGridKWh += entry.gridKWh || 0;
-      totalGridCost += (entry.gridKWh || 0) * (entry.gridPrice || 0);
+      const solarKWh = entry.solarKWh || 0;
+      const gridKWh = entry.gridKWh || 0;
+      const solarPrice = Number.isFinite(entry.solarPrice) ? entry.solarPrice : SOLAR_FEED_IN_TARIFF_EUR_PER_KWH;
+
+      netSolarKWh += solarKWh;
+      netGridKWh += gridKWh;
+      totalEnergyCost += (gridKWh * (entry.gridPrice || 0)) + (solarKWh * solarPrice);
     } else if (entry.type === 'discharge') {
       // Discharging: subtract energy proportionally from solar and grid
       const dischargedKWh = Math.abs(entry.totalKWh || 0);
@@ -52,8 +58,8 @@ function calculateBatteryEnergyCost(chargeLog, options = {}) {
         netGridKWh = Math.max(0, netGridKWh - gridDischarged);
 
         // Also subtract cost proportionally
-        const avgCostBeforeDischarge = totalGridCost / totalBeforeDischarge;
-        totalGridCost = Math.max(0, totalGridCost - (dischargedKWh * avgCostBeforeDischarge));
+        const avgCostBeforeDischarge = totalEnergyCost / totalBeforeDischarge;
+        totalEnergyCost = Math.max(0, totalEnergyCost - (dischargedKWh * avgCostBeforeDischarge));
       }
     }
   }
@@ -71,13 +77,16 @@ function calculateBatteryEnergyCost(chargeLog, options = {}) {
   }
 
   // Calculate weighted average price
-  const avgPrice = netGridKWh > 0 ? totalGridCost / netGridKWh : 0;
-  const weightedAvgPrice = netTotalKWh > 0 ? totalGridCost / netTotalKWh : 0;
+  const solarOnlyAvgPrice = netSolarKWh > 0 ? SOLAR_FEED_IN_TARIFF_EUR_PER_KWH : 0;
+  const avgPrice = netGridKWh > 0
+    ? (totalEnergyCost - (netSolarKWh * solarOnlyAvgPrice)) / netGridKWh
+    : 0;
+  const weightedAvgPrice = netTotalKWh > 0 ? totalEnergyCost / netTotalKWh : 0;
 
   if (logger) {
     logger(`  Weighted avg cost: ${weightedAvgPrice.toFixed(4)} €/kWh`);
-    logger(`  Total grid cost: €${totalGridCost.toFixed(2)}`);
-    logger(`  Solar: ${((netSolarKWh / netTotalKWh) * 100).toFixed(1)}% (free)`);
+    logger(`  Total energy cost: €${totalEnergyCost.toFixed(2)}`);
+    logger(`  Solar: ${((netSolarKWh / netTotalKWh) * 100).toFixed(1)}% @ ${solarOnlyAvgPrice.toFixed(4)} €/kWh`);
     if (netGridKWh > 0) {
       logger(`  Grid: ${((netGridKWh / netTotalKWh) * 100).toFixed(1)}% @ ${avgPrice.toFixed(4)} €/kWh`);
     }
@@ -90,8 +99,9 @@ function calculateBatteryEnergyCost(chargeLog, options = {}) {
     gridKWh: netGridKWh,
     solarPercent: netTotalKWh > 0 ? (netSolarKWh / netTotalKWh) * 100 : 0,
     gridPercent: netTotalKWh > 0 ? (netGridKWh / netTotalKWh) * 100 : 0,
-    totalCost: totalGridCost,
+    totalCost: totalEnergyCost,
     gridOnlyAvgPrice: avgPrice,
+    solarOnlyAvgPrice,
   };
 }
 
@@ -111,6 +121,7 @@ function createChargeEntry(params) {
     chargedKWh,
     solarKWh = 0,
     gridPrice = 0,
+    solarPrice = SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
     soc = 0,
     timestamp = new Date(),
   } = params;
@@ -125,6 +136,7 @@ function createChargeEntry(params) {
     gridKWh: chargeFromGrid,
     totalKWh: chargedKWh,
     gridPrice,
+    solarPrice,
     soc,
   };
 }

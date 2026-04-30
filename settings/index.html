@@ -475,6 +475,66 @@
             color: var(--homey-text);
             margin: 16px 0 8px 0;
         }
+
+        .planner-section {
+            margin-top: 18px;
+            padding: 18px;
+            border-radius: 12px;
+            border: 1px solid var(--homey-divider);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.03));
+        }
+
+        .planner-section:first-child {
+            margin-top: 0;
+        }
+
+        .planner-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .planner-section-kicker {
+            margin: 0 0 4px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--homey-text-secondary);
+        }
+
+        .planner-section-heading {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--homey-text);
+        }
+
+        .planner-section-note {
+            margin: 6px 0 0 0;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--homey-text-secondary);
+        }
+
+        .planner-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(0, 160, 255, 0.12);
+            color: var(--homey-text-highlight);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .planner-stack {
+            display: grid;
+            gap: 12px;
+        }
         
         .empty-state {
             text-align: center;
@@ -510,6 +570,11 @@
             .summary-grid,
             .chart-legend {
                 grid-template-columns: 1fr;
+            }
+
+            .planner-section-header {
+                flex-direction: column;
+                align-items: flex-start;
             }
 
             .info-grid {
@@ -574,6 +639,10 @@
                 padding: 12px;
             }
 
+            .planner-section {
+                padding: 14px;
+            }
+
             .info-grid {
                 grid-template-columns: 1fr;
             }
@@ -607,12 +676,6 @@
                 <div class="homey-card">
                     <h2 id="dashboardSummaryTitle">Dashboard Summary</h2>
                     <div id="dashboardSummaryContainer"></div>
-                </div>
-
-                <!-- Current Status -->
-                <div class="homey-card">
-                    <h2 id="liveDetailsTitle">Live Details</h2>
-                    <div id="statusContainer" class="status-grid"></div>
                     <button id="refreshBtn" class="homey-button">Refresh Data</button>
                 </div>
                 
@@ -685,7 +748,6 @@
             document.getElementById('deviceSelectorTitle').textContent = t('settings_page.device_selector.title', 'Energy Optimizer Devices');
             document.getElementById('loading').textContent = t('settings_page.loading', 'Loading optimizer data...');
             document.getElementById('dashboardSummaryTitle').textContent = t('settings_page.sections.dashboard_summary', 'Dashboard Summary');
-            document.getElementById('liveDetailsTitle').textContent = t('settings_page.sections.live_details', 'Live Details');
             document.getElementById('technicalDetailsTitle').textContent = t('settings_page.sections.technical_details', 'Technical Details');
             document.getElementById('priceChartTitle').textContent = t('settings_page.sections.price_chart', 'Price Chart (Available Data)');
             document.getElementById('optimizationPlanTitle').textContent = t('settings_page.sections.optimization_plan', 'Optimization Plan');
@@ -820,7 +882,6 @@
                 
                 // Render all sections
                 renderDashboardSummary(device, dashboardSummary);
-                renderStatus(device, dashboardSummary);
                 renderStats(strategy, dashboardSummary);
                 renderPriceChart(strategy, priceCache);
                 renderTimeline(strategy);
@@ -846,36 +907,6 @@
             }
         }
         
-        function renderStatus(device, summary) {
-            const status = device.capabilities?.optimizer_status || t('settings_page.status.no_data', 'Unknown');
-            const nextEvent = summary?.nextAction?.displayTime || device.capabilities?.next_charge_start || '-';
-            const isEnabled = device.capabilities?.onoff || false;
-            const flowTitle = summary?.energyFlow?.title || t('settings_page.status.no_live_flow_data', 'Noch keine Live-Flussdaten');
-            const liveReason = summary?.currentReason || status;
-            const flowTone = summary?.currentAction?.tone || '';
-            
-            const html = `
-                <div class="status-item ${isEnabled ? (flowTone === 'positive' ? 'charging' : 'active') : ''}">
-                    <span class="status-label">${t('settings_page.status.labels.optimizer', 'Optimizer')}:</span>
-                    <span class="status-value">${isEnabled ? t('settings_page.status.enabled', 'Enabled') : t('settings_page.status.disabled', 'Disabled')}</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">${t('settings_page.status.labels.live_flow', 'Live Flow')}:</span>
-                    <span class="status-value">${flowTitle}</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">${t('settings_page.status.labels.reason', 'Reason')}:</span>
-                    <span class="status-value">${liveReason}</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">${t('settings_page.status.labels.next_event', 'Next Event')}:</span>
-                    <span class="status-value">${nextEvent}</span>
-                </div>
-            `;
-            
-            document.getElementById('statusContainer').innerHTML = html;
-        }
-
         function renderDashboardSummary(device, summary) {
             const container = document.getElementById('dashboardSummaryContainer');
             const fallbackStatus = device.capabilities?.optimizer_status || t('settings_page.summary.no_data', 'Keine Daten');
@@ -906,59 +937,67 @@
             const action = summary.currentAction || {};
             const nextAction = summary.nextAction || {};
             const chargePlan = summary.chargePlan || {};
+            const dischargePlan = summary.dischargePlan || {};
+            const planHorizon = summary.planHorizon || {};
             const battery = summary.battery || {};
             const savings = summary.savings || {};
             const nextTime = nextAction.displayTime || t('settings_page.summary.next_not_scheduled', 'Nicht geplant');
+            const nextPlanInfo = (chargePlan.hasPlan && nextAction.key === 'next-charge-window')
+                ? formatText('settings_page.summary.plan_window_subtext', {
+                    energy: Number(chargePlan.totalEnergyKWh || 0).toFixed(2),
+                    price: Number(chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
+                }, '{energy} kWh zu Ø {price} €/kWh')
+                : '';
+            const dischargePlanInfo = dischargePlan.hasPlan
+                ? formatText('settings_page.summary.discharge_plan_subtext', {
+                    count: Number(dischargePlan.windowCount || 0),
+                    time: dischargePlan.nextStart ? formatDisplayDateTime(dischargePlan.nextStart, 'de-DE') : nextTime,
+                }, '{count} Entladefenster geplant · Erste Phase: {time}')
+                : '';
+            const nextPanelLines = [nextTime, nextPlanInfo, dischargePlanInfo].filter(Boolean).join('<br>');
+            const forecastSubtext = planHorizon.displayTime
+                ? formatText('settings_page.summary.today_forecast_until_subtext', {
+                    time: planHorizon.displayTime,
+                }, 'Geschätzte Optimierungswirkung für den aktuellen Plan bis {time}.')
+                : t('settings_page.summary.today_forecast_subtext', 'Geschätzte Optimierungswirkung für den aktuellen Plan.');
             const batteryLine = battery.currentSocPercent !== undefined
                 ? formatText('settings_page.summary.battery_line', {
                     soc: Number(battery.currentSocPercent).toFixed(1),
                     target: Number(battery.targetSocPercent || 0).toFixed(1),
-                }, '{soc}% SoC · Ziel {target}%')
+                }, '{soc}% SoC · Ziel-SoC {target}%')
                 : t('settings_page.summary.battery_status_unavailable', 'Batteriestatus nicht verfuegbar');
             const capacityLine = battery.freeCapacityToTargetKWh !== undefined
                 ? formatText('settings_page.summary.capacity_line', {
                     capacity: Number(battery.freeCapacityToTargetKWh).toFixed(2),
-                }, '{capacity} kWh frei bis zum Ziel')
-                : t('settings_page.summary.no_capacity_available', 'Kein Ladeplatz verfuegbar');
+                }, 'Freier Ladeplatz bis Ziel-SoC: {capacity} kWh')
+                : t('settings_page.summary.no_capacity_available', 'Kein freier Ladeplatz bis zum Ziel-SoC');
             const aboveTargetLine = battery.aboveTargetDeltaPercent > 0
                 ? formatText('settings_page.summary.above_target_line', {
                     delta: Number(battery.aboveTargetDeltaPercent).toFixed(1),
-                }, 'Batterie liegt {delta}% ueber dem Zielwert.')
+                }, 'Batterie liegt {delta}% ueber dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfuegbar.')
                 : '';
 
             container.innerHTML = `
                 <div class="summary-hero ${action.tone || 'neutral'}">
-                    <div class="summary-eyebrow">${t('settings_page.summary.eyebrow_now', 'Jetzt')}</div>
+                    <div class="summary-eyebrow">${t('settings_page.summary.eyebrow_current_battery_mode', 'Aktueller Batteriemodus')}</div>
                     <div class="summary-title">${action.title || fallbackStatus}</div>
                     <div class="summary-detail">${action.detail || summary.currentReason || ''}</div>
                 </div>
                 <div class="summary-grid">
                     <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.why_now', 'Warum gerade?')}</div>
-                        <div class="summary-panel-value">${summary.currentReason || t('settings_page.summary.why_now_fallback', 'Keine weitere Begruendung verfuegbar.')}</div>
-                    </div>
-                    <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.next_up', 'Als Naechstes')}</div>
-                        <div class="summary-panel-value">${nextAction.title || t('settings_page.summary.no_next_event', 'Kein weiteres Ereignis geplant')}</div>
-                        <div class="summary-panel-subtext">${nextTime}</div>
-                    </div>
-                    <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.energy_flow', 'Energiefluss')}</div>
+                        <div class="summary-panel-label">${t('settings_page.summary.current_energy_flow', 'Aktueller Energiefluss')}</div>
                         <div class="summary-panel-value">${summary.energyFlow?.title || t('settings_page.summary.energy_flow_unknown', 'Energiefluss unbekannt')}</div>
                         <div class="summary-panel-subtext">${summary.energyFlow?.detail || t('settings_page.summary.energy_flow_no_measurements', 'Es liegen noch keine Live-Messwerte vor.')}</div>
                     </div>
                     <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.planned_grid_charge', 'Geplante Netzladung')}</div>
-                        <div class="summary-panel-value">${chargePlan.summary || t('dashboard.charge_plan.none', 'Keine Netzladung geplant.')}</div>
-                        <div class="summary-panel-subtext">${chargePlan.hasPlan ? formatText('settings_page.summary.plan_window_subtext', {
-                            energy: Number(chargePlan.totalEnergyKWh || 0).toFixed(2),
-                            price: Number(chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
-                        }, '{energy} kWh zu Ø {price} €/kWh') : t('settings_page.summary.no_cheap_slot', 'Aktuell kein guenstiges Ladefenster im Plan.')}</div>
+                        <div class="summary-panel-label">${t('settings_page.summary.next_up', 'Als Naechstes')}</div>
+                        <div class="summary-panel-value">${nextAction.title || t('settings_page.summary.no_next_event', 'Kein weiteres Ereignis geplant')}</div>
+                        <div class="summary-panel-subtext">${nextPanelLines || nextTime}</div>
                     </div>
                     <div class="summary-panel">
                         <div class="summary-panel-label">${t('settings_page.summary.today_forecast', 'Heutige Prognose')}</div>
                         <div class="summary-panel-value">€${Number(savings.todayForecastEur || 0).toFixed(2)}</div>
-                        <div class="summary-panel-subtext">${t('settings_page.summary.today_forecast_subtext', 'Geschaetzte Optimierungswirkung fuer den aktuellen Plan.')}</div>
+                        <div class="summary-panel-subtext">${forecastSubtext}</div>
                     </div>
                     <div class="summary-panel">
                         <div class="summary-panel-label">${t('settings_page.summary.realized', 'Realisiert')}</div>
@@ -1282,7 +1321,15 @@
                     : false;
                 
                 html += `
-                    <div class="section-title">${t('settings_page.timeline.battery_and_costs', 'Batterie und Energiekosten')}</div>
+                    <div class="planner-section">
+                        <div class="planner-section-header">
+                            <div>
+                                <div class="planner-section-kicker">${t('settings_page.timeline.planner_kicker_overview', 'Planübersicht')}</div>
+                                <h3 class="planner-section-heading">${t('settings_page.timeline.battery_and_costs', 'Batterie und Energiekosten')}</h3>
+                                <p class="planner-section-note">${t('settings_page.timeline.battery_and_costs_note', 'Die wichtigsten Speicher- und Kostendaten für den aktuellen Optimierungsplan.')}</p>
+                            </div>
+                        </div>
+                        <div class="planner-stack">
                     <div class="status-item ${batteryFull ? 'charging' : 'active'}" style="margin-bottom: 16px;">
                         <div style="width: 100%;">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -1361,7 +1408,7 @@
                                     <span class="status-value" style="color: #888;">${t('settings_page.timeline.no_data_yet', 'Noch keine Daten')}</span>
                                 </div>
                                 <div style="font-size: 0.9em; color: #888; margin-top: 4px;">
-                                    ${t('settings_page.timeline.no_data_info', 'ℹ️ Die Kostenerfassung beginnt, sobald erstmals Ladevorgaenge erfasst werden.')}
+                                    ${t('settings_page.timeline.no_data_info', 'ℹ️ Die Kostenerfassung beginnt, sobald erstmals Ladevorgänge erfasst werden.')}
                                 </div>
                             </div>
                         </div>
@@ -1386,6 +1433,8 @@
                 }
                 
                 html += `
+                        </div>
+                    </div>
                 `;
             }
             
@@ -1400,13 +1449,21 @@
                 const firstTimeStr = formatDisplayDateTime(firstInterval.startsAt);
                 
                 html += `
+                    <div class="planner-section">
+                        <div class="planner-section-header">
+                            <div>
+                                <div class="planner-section-kicker">${t('settings_page.timeline.planner_kicker_plan', 'Optimierungsplan')}</div>
+                                <h3 class="planner-section-heading">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</h3>
+                                <p class="planner-section-note">${t('settings_page.timeline.planned_windows_note', 'Hier siehst du, wann der Optimizer gezielt günstige Energie für den Speicher einplant.')}</p>
+                            </div>
+                            <span class="planner-badge">${(chargeEntries.length > 0 ? chargeEntries.length : strategy.chargeIntervals.length)}</span>
+                        </div>
+                        <div class="planner-stack">
                     <div class="status-item active" style="margin-bottom: 16px;">
-                        <span class="status-label">${t('settings_page.timeline.next_planned_window', 'Naechstes geplantes Ladefenster')}:</span>
+                        <span class="status-label">${t('settings_page.timeline.next_planned_window', 'Nächstes geplantes Ladefenster')}:</span>
                         <span class="status-value">${firstTimeStr}</span>
                     </div>
                 `;
-                
-                html += `<div class="section-title">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</div>`;
                 html += '<div class="timeline">';
 
                 const displayEntries = (chargeEntries.length > 0 ? chargeEntries : strategy.chargeIntervals).slice(0, 12);
@@ -1452,15 +1509,35 @@
                     `;
                 }
                 
-                html += '</div>';
+                html += '</div></div></div>';
             } else {
-                html += `<div class="section-title">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</div>`;
-                html += `<div class="no-data">${t('settings_page.timeline.no_grid_charging_planned', 'Aktuell ist keine Netzladung geplant. Wenn Energie fehlt, wird das Haus direkt aus dem Netz versorgt.')}</div>`;
+                html += `
+                    <div class="planner-section">
+                        <div class="planner-section-header">
+                            <div>
+                                <div class="planner-section-kicker">${t('settings_page.timeline.planner_kicker_plan', 'Optimierungsplan')}</div>
+                                <h3 class="planner-section-heading">${t('settings_page.timeline.planned_windows', 'Geplante Ladefenster')}</h3>
+                                <p class="planner-section-note">${t('settings_page.timeline.no_grid_charging_planned', 'Aktuell ist keine Netzladung geplant. Wenn Energie fehlt, wird das Haus direkt aus dem Netz versorgt.')}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
             }
             
             // Expensive intervals (discharge)
             if (dischargeIntervals.length > 0) {
-                html += `<div class="section-title">${t('settings_page.timeline.expensive_times_with_battery_use', 'Teure Zeiten mit Batterienutzung')}</div>`;
+                html += `
+                    <div class="planner-section">
+                        <div class="planner-section-header">
+                            <div>
+                                <div class="planner-section-kicker">${t('settings_page.timeline.planner_kicker_usage', 'Batterienutzung')}</div>
+                                <h3 class="planner-section-heading">${t('settings_page.timeline.expensive_times_with_battery_use', 'Teure Zeiten mit Batterienutzung')}</h3>
+                                <p class="planner-section-note">${t('settings_page.timeline.expensive_times_note', 'Diese Phasen sind wirtschaftlich genug, um gespeicherte Energie gezielt für den Hausverbrauch zu nutzen.')}</p>
+                            </div>
+                            <span class="planner-badge">${dischargeIntervals.length}</span>
+                        </div>
+                        <div class="planner-stack">
+                `;
                 html += '<div class="timeline">';
                 
                 const displayIntervals = dischargeIntervals.slice(0, 12);
@@ -1508,12 +1585,12 @@
                         <span class="status-value">€${(typeof optimizedCost === 'number' ? optimizedCost : 0).toFixed(2)}</span>
                     </div>
                     <div class="status-item active">
-                        <span class="status-label">${t('settings_page.timeline.estimated_savings', 'Geschaetzte Einsparung')}:</span>
+                        <span class="status-label">${t('settings_page.timeline.estimated_savings', 'Geschätzte Einsparung')}:</span>
                         <span class="status-value">€${Math.max(0, typeof savings === 'number' ? savings : 0).toFixed(2)}</span>
                     </div>
                 `;
                 
-                html += '</div>';
+                html += '</div></div></div>';
             }
             
             if (!html) {

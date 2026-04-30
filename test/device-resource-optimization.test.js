@@ -367,7 +367,83 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(passedParams.minEnergyKWh).toBeCloseTo(2.0, 6);
 
       expect(optimizer.currentStrategy.batteryStatus.storedKWh).toBeCloseTo(5.0, 6);
+      expect(optimizer.currentStrategy.batteryStatus.availableCapacity).toBeCloseTo(5.0, 6);
       expect(optimizer.currentStrategy.batteryStatus.energyCost.avgPrice).toBeCloseTo(0.123, 6);
+
+      lpSpy.mockRestore();
+    });
+
+    it('should clamp charging headroom to target SoC and keep excess energy as discharge buffer', async () => {
+      jest.resetModules();
+      jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });
+
+      const optimizerCore = require('../drivers/energy-optimizer/optimizer-core');
+      const lpSpy = jest.spyOn(optimizerCore, 'optimizeStrategyWithLp').mockReturnValue({
+        chargeIntervals: [],
+        dischargeIntervals: [{ startsAt: '2024-01-15T18:00:00Z', total: 0.4, demandKWh: 0.4 }],
+        totalChargeKWh: 0,
+        totalDischargeKWh: 0.4,
+        savings: 0.12,
+        economics: null,
+        plannedCharging: null,
+        chargeDisplayEntries: [],
+      });
+
+      const EnergyOptimizerDeviceFresh = require('../drivers/energy-optimizer/device');
+      const optimizer = new EnergyOptimizerDeviceFresh();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 97),
+        getSetting: jest.fn(() => 9.9),
+      };
+
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getCapabilitySafe = jest.fn(() => 97);
+
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        if (key === 'min_soc_threshold') return 7;
+        if (key === 'min_profit_cent_per_kwh') return 6;
+        return def;
+      });
+
+      optimizer.getSetting = jest.fn(() => undefined);
+      optimizer.getSettings = jest.fn(() => ({ battery_capacity: 9.9 }));
+
+      optimizer.normalizedChargePowerKW = 6;
+      optimizer.normalizedTargetSoc = 0.85;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.05;
+      optimizer.productionHistory = {};
+      optimizer.consumptionHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      optimizer.calculateBatteryEnergyCost = jest.fn(() => ({
+        avgPrice: 0,
+        totalKWh: 9.603,
+        solarKWh: 9.603,
+        gridKWh: 0,
+        solarPercent: 100,
+        gridPercent: 0,
+        totalCost: 0,
+        gridOnlyAvgPrice: 0,
+      }));
+
+      await optimizer.calculateOptimalStrategy({ force: true });
+
+      expect(lpSpy).toHaveBeenCalled();
+      const passedParams = lpSpy.mock.calls[0][1];
+      expect(passedParams.targetSoc).toBeCloseTo(0.85, 6);
+      expect(optimizer.currentStrategy.batteryStatus.availableCapacity).toBe(0);
+      expect(optimizer.currentStrategy.batteryStatus.availableCapacityToTarget).toBe(0);
+      expect(optimizer.currentStrategy.batteryStatus.excessEnergyAboveTargetKWh).toBeCloseTo(1.188, 3);
+      expect(optimizer.currentStrategy.dischargeIntervals).toHaveLength(1);
 
       lpSpy.mockRestore();
     });
@@ -432,6 +508,70 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(optimizer.currentStrategy.chargeIntervals).toEqual([]);
       expect(optimizer.currentStrategy.dischargeIntervals).toEqual([]);
       expect(optimizer.currentStrategy.savings).toBe(0);
+
+      lpSpy.mockRestore();
+    });
+
+    it('should log target-window no-op reasoning separately from above-target reserve', async () => {
+      jest.resetModules();
+      jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });
+
+      const optimizerCore = require('../drivers/energy-optimizer/optimizer-core');
+      const lpSpy = jest.spyOn(optimizerCore, 'optimizeStrategyWithLp').mockReturnValue(null);
+
+      const EnergyOptimizerDeviceFresh = require('../drivers/energy-optimizer/device');
+      const optimizer = new EnergyOptimizerDeviceFresh();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 97),
+        getSetting: jest.fn(() => 9.9),
+      };
+
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getCapabilitySafe = jest.fn(() => 97);
+
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        if (key === 'min_soc_threshold') return 7;
+        if (key === 'min_profit_cent_per_kwh') return 6;
+        return def;
+      });
+
+      optimizer.getSetting = jest.fn(() => undefined);
+      optimizer.getSettings = jest.fn(() => ({ battery_capacity: 9.9 }));
+
+      optimizer.normalizedChargePowerKW = 6;
+      optimizer.normalizedTargetSoc = 0.85;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.05;
+      optimizer.productionHistory = {};
+      optimizer.consumptionHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = { __: jest.fn((key) => key), i18n: { getLanguage: jest.fn(() => 'en') } };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      optimizer.calculateBatteryEnergyCost = jest.fn(() => ({
+        avgPrice: 0,
+        totalKWh: 9.603,
+        solarKWh: 9.603,
+        gridKWh: 0,
+        solarPercent: 100,
+        gridPercent: 0,
+        totalCost: 0,
+        gridOnlyAvgPrice: 0,
+      }));
+
+      await optimizer.calculateOptimalStrategy({ force: true });
+
+      expect(lpSpy).toHaveBeenCalled();
+      const logLines = optimizer.log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(logLines).toContain('Charging headroom to target: 0.00 kWh');
+      expect(logLines).toContain('No target-window charging planned: target SoC already reached or exceeded.');
+      expect(logLines).toContain('above target available as discharge buffer in normal mode.');
 
       lpSpy.mockRestore();
     });

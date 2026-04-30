@@ -1,5 +1,7 @@
 'use strict';
 
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('../constants');
+
 /**
  * Battery cost helpers that depend on host state (`priceCache`, `currentStrategy`, logging).
  * Host-based service module: operates on the EnergyOptimizerDevice instance.
@@ -40,7 +42,9 @@ function getPlannedUnknownAvgPrice(host) {
       const plannedEnergyKWh = Number.isFinite(interval.plannedEnergyKWh)
         ? interval.plannedEnergyKWh
         : plannedGridEnergyKWh + plannedSolarEnergyKWh;
-      const plannedCostEur = (plannedGridEnergyKWh * (Number.isFinite(interval.total) ? interval.total : 0));
+      const plannedCostEur =
+        (plannedGridEnergyKWh * (Number.isFinite(interval.total) ? interval.total : 0)) +
+        (plannedSolarEnergyKWh * SOLAR_FEED_IN_TARIFF_EUR_PER_KWH);
 
       return {
         energyKWh: acc.energyKWh + plannedEnergyKWh,

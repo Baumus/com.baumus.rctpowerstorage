@@ -468,6 +468,30 @@ describe('LP Optimizer Logic', () => {
       expect(model.constraints.sMin_1.min).toBeCloseTo(2.0, 6);
       expect(model.variables.s_1.sMin_1).toBe(1);
     });
+
+    test('keeps initial above-target stored energy feasible instead of clamping SoC to target window', () => {
+      mockLpSolver.Solve.mockReturnValue({ totalCost: 0, feasible: true, s_0: 9.5, e_0: 9.5 });
+
+      const indexedData = [
+        { index: 0, startsAt: '2025-01-01T12:00:00Z', total: 0.18, intervalOfDay: 48 },
+        { index: 1, startsAt: '2025-01-01T18:00:00Z', total: 0.32, intervalOfDay: 72 },
+      ];
+
+      const params = {
+        batteryCapacity: 10,
+        currentSoc: 0.95,
+        targetSoc: 0.8,
+        chargePowerKW: 5,
+        intervalHours: 0.25,
+        efficiencyLoss: 0.1,
+      };
+
+      optimizeStrategyWithLp(indexedData, params, mockHistory, { lpSolver: mockLpSolver });
+
+      const model = mockLpSolver.Solve.mock.calls[0][0];
+      expect(model.constraints.sCap_0.max).toBeCloseTo(9.5, 6);
+      expect(model.constraints.sCap_1.max).toBeCloseTo(9.5, 6);
+    });
   });
 
   describe('Error handling edge cases', () => {

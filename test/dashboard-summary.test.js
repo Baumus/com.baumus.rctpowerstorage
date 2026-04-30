@@ -58,6 +58,8 @@ describe('dashboard summary service', () => {
         currentSoc: 0.52,
         targetSoc: 0.85,
         availableCapacity: 3.3,
+        availableCapacityToTarget: 3.3,
+        excessEnergyAboveTargetKWh: 0,
         storedKWh: 5.2,
         energyCost: {
           avgPrice: 0.17,
@@ -74,6 +76,9 @@ describe('dashboard summary service', () => {
     expect(summary.nextAction.key).toBe('next-charge-window');
     expect(summary.chargePlan.hasPlan).toBe(true);
     expect(summary.chargePlan.totalEnergyKWh).toBeCloseTo(4.2, 6);
+    expect(summary.dischargePlan.hasPlan).toBe(false);
+    expect(summary.planHorizon.hasPlan).toBe(true);
+    expect(summary.planHorizon.endsAt).toBe('2026-04-29T12:15:00.000Z');
     expect(summary.savings.todayForecastEur).toBeCloseTo(1.85, 6);
     expect(summary.savings.realized.currentMonthEur).toBeCloseTo(0.42, 6);
     expect(summary.savings.realized.last365DaysEur).toBeCloseTo(0.77, 6);
@@ -97,7 +102,9 @@ describe('dashboard summary service', () => {
       batteryStatus: {
         currentSoc: 0.91,
         targetSoc: 0.80,
-        availableCapacity: -1.1,
+        availableCapacity: 0,
+        availableCapacityToTarget: 0,
+        excessEnergyAboveTargetKWh: 1.1,
         storedKWh: 9.1,
         energyCost: {
           avgPrice: 0.19,
@@ -111,8 +118,11 @@ describe('dashboard summary service', () => {
     expect(summary.currentAction.key).toBe('holding');
     expect(summary.chargePlan.hasPlan).toBe(false);
     expect(summary.chargePlan.summary).toBe('Keine Netzladung geplant.');
+    expect(summary.dischargePlan.hasPlan).toBe(false);
+    expect(summary.planHorizon.hasPlan).toBe(false);
     expect(summary.battery.freeCapacityToTargetKWh).toBe(0);
     expect(summary.battery.aboveTargetDeltaPercent).toBeCloseTo(11, 6);
+    expect(summary.battery.aboveTargetBufferKWh).toBeCloseTo(1.1, 6);
     expect(summary.battery.energyPriceIsEstimated).toBe(true);
   });
 
@@ -136,6 +146,8 @@ describe('dashboard summary service', () => {
         currentSoc: 0.62,
         targetSoc: 0.8,
         availableCapacity: 1.8,
+        availableCapacityToTarget: 1.8,
+        excessEnergyAboveTargetKWh: 0,
         storedKWh: 6.2,
         energyCost: null,
       },
@@ -145,5 +157,44 @@ describe('dashboard summary service', () => {
     expect(summary.energyFlow.grid).toBe('exporting');
     expect(summary.energyFlow.solar).toBe('active');
     expect(summary.energyFlow.battery).toBe('idle');
+  });
+
+  it('shows the next discharge phase when it starts before the next charge window', () => {
+    const host = createHost({
+      lastBatteryMode: BATTERY_MODE.CONSTANT,
+      _dashboardSummaryNow: new Date('2026-04-29T13:00:00.000Z'),
+    });
+
+    const summary = buildDashboardSummary(host, {
+      chargeIntervals: [
+        { startsAt: '2026-04-29T18:00:00.000Z', total: 0.14 },
+      ],
+      dischargeIntervals: [
+        { startsAt: '2026-04-29T14:00:00.000Z', total: 0.34, demandKWh: 0.8 },
+      ],
+      plannedCharging: {
+        totalEnergyKWh: 2.5,
+        avgPriceEurPerKWh: 0.14,
+      },
+      batteryStatus: {
+        currentSoc: 0.91,
+        targetSoc: 0.8,
+        availableCapacity: 0,
+        availableCapacityToTarget: 0,
+        excessEnergyAboveTargetKWh: 1.1,
+        storedKWh: 9.1,
+        energyCost: {
+          avgPrice: 0.07,
+          isEstimated: false,
+        },
+      },
+    });
+
+    expect(summary.nextAction.key).toBe('next-expensive-window');
+    expect(summary.nextAction.title).toBe('Naechste teure Phase');
+    expect(summary.dischargePlan.hasPlan).toBe(true);
+    expect(summary.dischargePlan.windowCount).toBe(1);
+    expect(summary.dischargePlan.nextStart).toBe('2026-04-29T14:00:00.000Z');
+    expect(summary.planHorizon.endsAt).toBe('2026-04-29T18:15:00.000Z');
   });
 });

@@ -520,6 +520,7 @@ describe('Settings Page Data Rendering', () => {
         currentSoc: 0.65,
         targetSoc: 0.85,
         availableCapacity: 3.5,
+        availableCapacityToTarget: 3.5,
         energyCost: {
           avgPrice: 0.1845,
           solarKWh: 2.0,
@@ -628,12 +629,12 @@ describe('Settings Page Data Rendering', () => {
       expect(targetPercent).toBe('80.0');
       expect(availableKWh).toBe('4.00');
 
-      // For our 4 kWh charge (1.5 solar, 2.5 grid @ 0.20 €/kWh):
-      //   totalCost = 2.5 * 0.20 = 0.50 €
-      //   totalKWh = 4.0 → weighted avg = 0.50 / 4.0 = 0.125 €/kWh
+      // For our 4 kWh charge (1.5 solar @ 0.07, 2.5 grid @ 0.20 €/kWh):
+      //   totalCost = (1.5 * 0.07) + (2.5 * 0.20) = 0.605 €
+      //   totalKWh = 4.0 → weighted avg = 0.605 / 4.0 = 0.15125 €/kWh
       //   solar share = 1.5 / 4.0 = 37.5% → ≈ 38%
       //   grid share = 2.5 / 4.0 = 62.5% → rounds to 63%
-      expect(avgPriceDisplay).toBe('0.1250');
+      expect(avgPriceDisplay).toBe('0.1512');
       expect(solarKWhDisplay).toBe('1.50');
       expect(gridKWhDisplay).toBe('2.50');
       expect(solarPercentDisplay).toBe('38');
@@ -669,6 +670,7 @@ describe('Settings Page Data Rendering', () => {
           currentSoc: 0.50,
           targetSoc: 0.85,
           availableCapacity: 5.0,
+          availableCapacityToTarget: 5.0,
           energyCost,
         },
       };
@@ -680,22 +682,23 @@ describe('Settings Page Data Rendering', () => {
       const avgPriceText = `${cost.avgPrice.toFixed(4)} €/kWh`;
       const solarText = `☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)`;
       const gridText = `⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)`;
-      const headerText = `Ladestand: ${(bat.currentSoc * 100).toFixed(1)}% (Target: ${(bat.targetSoc * 100).toFixed(1)}%)`;
-      const capacityText = `Freier Ladeplatz bis Ziel: ${bat.availableCapacity.toFixed(2)} kWh`;
+      const headerText = `Ladestand: ${(bat.currentSoc * 100).toFixed(1)}% (Ziel: ${(bat.targetSoc * 100).toFixed(1)}%)`;
+      const capacityText = `Freier Ladeplatz bis Ziel-SoC: ${bat.availableCapacity.toFixed(2)} kWh`;
 
       // Verify string formatting matches HTML display
       expect(avgPriceText).toMatch(/^0\.\d{4} €\/kWh$/);
       expect(solarText).toMatch(/^☀️ Solar: \d+\.\d{2} kWh \(\d+%\)$/);
       expect(gridText).toMatch(/^⚡ Grid: \d+\.\d{2} kWh \(\d+%\)$/);
-      expect(headerText).toBe('Ladestand: 50.0% (Target: 85.0%)');
-      expect(capacityText).toBe('Freier Ladeplatz bis Ziel: 5.00 kWh');
+      expect(headerText).toBe('Ladestand: 50.0% (Ziel: 85.0%)');
+      expect(capacityText).toBe('Freier Ladeplatz bis Ziel-SoC: 5.00 kWh');
 
       // Total charge = 3.0 + 2.0 = 5.0 kWh
       // Solar = 1.0 + 0.5 = 1.5 kWh → 30%
       // Grid = 2.0 + 1.5 = 3.5 kWh → 70%
       // Grid cost = (2.0 * 0.25) + (1.5 * 0.22) = 0.50 + 0.33 = 0.83 €
-      // Avg = 0.83 / 5.0 = 0.166 €/kWh
-      expect(avgPriceText).toBe('0.1660 €/kWh');
+      // Solar opportunity cost = 1.5 * 0.07 = 0.105 €
+      // Avg = (0.83 + 0.105) / 5.0 = 0.187 €/kWh
+      expect(avgPriceText).toBe('0.1870 €/kWh');
       expect(solarText).toBe('☀️ Solar: 1.50 kWh (30%)');
       expect(gridText).toBe('⚡ Grid: 3.50 kWh (70%)');
     });
@@ -707,6 +710,7 @@ describe('Settings Page Data Rendering', () => {
           targetSoc: 0.85,
           batteryCapacity: 10.0,
           availableCapacity: 5.0,
+          availableCapacityToTarget: 5.0,
           energyCost: null, // No battery cost data available
         },
         chargeIntervals: [],
@@ -763,7 +767,7 @@ describe('Settings Page Data Rendering', () => {
       expect(cost.totalKWh).toBe(7.3);
 
       // UI should show:
-      // - Label: "💰 Geschaetzter Energiepreis in der Batterie:"
+      // - Label: "💰 Geschätzter Energiepreis in der Batterie:"
       // - Warning: "⚠️ Der Ursprung der Batterieladung ist noch nicht vollstaendig bekannt."
       // - Values with estimated breakdown
       const label = t('settings_page.timeline.avg_battery_energy_cost_estimated_label');
@@ -772,7 +776,7 @@ describe('Settings Page Data Rendering', () => {
       const solarText = `☀️ Solar: ${cost.solarKWh.toFixed(2)} kWh (${cost.solarPercent.toFixed(0)}%)`;
       const gridText = `⚡ Grid: ${cost.gridKWh.toFixed(2)} kWh (${cost.gridPercent.toFixed(0)}%)`;
 
-      expect(label).toMatch(/Geschaetzter Energiepreis/);
+      expect(label).toMatch(/Geschätzter Energiepreis/);
       expect(warning).toMatch(/Ursprung der Batterieladung/);
       expect(avgPriceText).toBe('0.1400 €/kWh');
       expect(solarText).toBe('☀️ Solar: 2.19 kWh (30%)');
@@ -969,6 +973,7 @@ describe('Settings Page Data Rendering', () => {
         },
         nextAction: {
           title: 'Naechstes Ladefenster',
+          key: 'next-charge-window',
           displayTime: '29.04.2026, 16:00',
         },
         chargePlan: {
@@ -977,6 +982,11 @@ describe('Settings Page Data Rendering', () => {
           totalEnergyKWh: 4.25,
           avgPriceEurPerKWh: 0.1325,
         },
+        dischargePlan: {
+          hasPlan: true,
+          windowCount: 7,
+          nextStart: '2026-04-29T16:30:00.000Z',
+        },
         savings: {
           todayForecastEur: 0.75,
           realized: {
@@ -984,6 +994,11 @@ describe('Settings Page Data Rendering', () => {
             lastMonthEur: 2.5,
             last365DaysEur: 18.25,
           },
+        },
+        planHorizon: {
+          hasPlan: true,
+          endsAt: '2026-04-29T20:45:00.000Z',
+          displayTime: '29.04.2026, 22:45',
         },
         battery: {
           currentSocPercent: 91,
@@ -997,12 +1012,23 @@ describe('Settings Page Data Rendering', () => {
       const actionTitle = summary.currentAction.title || fallbackStatus;
       const flowTitle = summary.energyFlow?.title || t('settings_page.summary.energy_flow_unknown');
       const nextTime = summary.nextAction.displayTime || t('settings_page.summary.next_not_scheduled');
-      const chargePlanSubtext = summary.chargePlan.hasPlan
+      const nextPlanInfo = (summary.chargePlan.hasPlan && summary.nextAction.key === 'next-charge-window')
         ? formatText('settings_page.summary.plan_window_subtext', {
           energy: Number(summary.chargePlan.totalEnergyKWh || 0).toFixed(2),
           price: Number(summary.chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
         })
-        : t('settings_page.summary.no_cheap_slot');
+        : '';
+      const dischargePlanInfo = summary.dischargePlan.hasPlan
+        ? formatText('settings_page.summary.discharge_plan_subtext', {
+          count: Number(summary.dischargePlan.windowCount || 0),
+          time: formatDisplayDateTime(summary.dischargePlan.nextStart, 'de-DE'),
+        })
+        : '';
+      const forecastSubtext = summary.planHorizon?.displayTime
+        ? formatText('settings_page.summary.today_forecast_until_subtext', {
+          time: summary.planHorizon.displayTime,
+        })
+        : t('settings_page.summary.today_forecast_subtext');
       const realizedLine = formatText('settings_page.summary.realized_last_365', { amount: Number(summary.savings.realized?.last365DaysEur || 0).toFixed(2) });
       const realizedSubtext = formatText('settings_page.summary.realized_subtext', {
         currentMonth: Number(summary.savings.realized?.currentMonthEur || 0).toFixed(2),
@@ -1016,21 +1042,23 @@ describe('Settings Page Data Rendering', () => {
         capacity: Number(summary.battery.freeCapacityToTargetKWh).toFixed(2),
       });
       const aboveTargetLine = summary.battery.aboveTargetDeltaPercent > 0
-        ? `Batterie liegt ${Number(summary.battery.aboveTargetDeltaPercent).toFixed(1)}% ueber dem Zielwert.`
+        ? `Batterie liegt ${Number(summary.battery.aboveTargetDeltaPercent).toFixed(1)}% ueber dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfuegbar.`
         : '';
 
       expect(actionTitle).toBe('Batterie wartet auf Solar oder spaetere Nutzung');
       expect(flowTitle).toBe('Solar versorgt das Haus und speist Ueberschuss ein');
       expect(nextTime).toBe('29.04.2026, 16:00');
-      expect(chargePlanSubtext).toBe('4.25 kWh zu Ø 0.1325 €/kWh');
+      expect(nextPlanInfo).toBe('4.25 kWh zu Ø 0.1325 €/kWh');
+      expect(dischargePlanInfo).toBe('7 Entladefenster geplant · Erste Phase: 29.04.2026, 18:30');
+      expect(forecastSubtext).toBe('Geschätzte Optimierungswirkung für den aktuellen Plan bis 29.04.2026, 22:45.');
       expect(realizedLine).toBe('365 Tage: €18.25');
       expect(realizedSubtext).toBe('Aktueller Monat: €1.75 · Letzter Monat: €2.50');
-      expect(batteryLine).toBe('91.0% SoC · Ziel 80.0%');
-      expect(capacityLine).toBe('0.00 kWh frei bis zum Ziel');
-      expect(aboveTargetLine).toBe('Batterie liegt 11.0% ueber dem Zielwert.');
+      expect(batteryLine).toBe('91.0% SoC · Ziel-SoC 80.0%');
+      expect(capacityLine).toBe('Freier Ladeplatz bis Ziel-SoC: 0.00 kWh');
+      expect(aboveTargetLine).toBe('Batterie liegt 11.0% ueber dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfuegbar.');
     });
 
-    it('should derive live details and technical detail cards from summary plus strategy', () => {
+    it('should derive technical detail metrics from summary plus strategy', () => {
       const device = {
         capabilities: {
           optimizer_status: 'Charging at 3.3kW',
@@ -1063,9 +1091,6 @@ describe('Settings Page Data Rendering', () => {
         forecastedDemand: 5,
       };
 
-      const nextEvent = summary?.nextAction?.displayTime || device.capabilities?.next_charge_start || '-';
-      const flowTitle = summary?.energyFlow?.title || 'Noch keine Live-Flussdaten';
-      const liveReason = summary?.currentReason || device.capabilities?.optimizer_status || 'Unknown';
       const chargeIntervals = strategy.chargeIntervals?.length || 0;
       const expensiveIntervals = strategy.expensiveIntervals?.length || 0;
       const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
@@ -1075,9 +1100,6 @@ describe('Settings Page Data Rendering', () => {
         ? Number(summary.battery.freeCapacityToTargetKWh).toFixed(2)
         : '-';
 
-      expect(flowTitle).toBe('Netz laedt die Batterie');
-      expect(liveReason).toBe('Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.');
-      expect(nextEvent).toBe('15.01.2024, 23:00');
       expect(chargeIntervals).toBe(2);
       expect(expensiveIntervals).toBe(1);
       expect(avgPrice).toBe('0.2234');
@@ -1264,11 +1286,11 @@ describe('Settings Page Data Rendering', () => {
 
       // Verify UI labels
       const label = '💰 Durchschnittlicher Energiepreis in der Batterie:';
-      const subtitle = `Teilweise gemessen: ${cost.trackedKWh.toFixed(2)} kWh bekannt, ${cost.unknownKWh.toFixed(2)} kWh geschaetzt zu ${cost.unknownAvgPrice.toFixed(4)} €/kWh.`;
+      const subtitle = `Teilweise gemessen: ${cost.trackedKWh.toFixed(2)} kWh bekannt, ${cost.unknownKWh.toFixed(2)} kWh geschätzt zu ${cost.unknownAvgPrice.toFixed(4)} €/kWh.`;
       
       expect(label).toBe('💰 Durchschnittlicher Energiepreis in der Batterie:');
       expect(subtitle).toContain('3.00 kWh bekannt');
-      expect(subtitle).toContain('4.00 kWh geschaetzt');
+      expect(subtitle).toContain('4.00 kWh geschätzt');
       expect(subtitle).toContain('0.2000 €/kWh');
     });
 

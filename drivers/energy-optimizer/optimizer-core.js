@@ -176,6 +176,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
   const currentEnergyKWh = currentSoc * batteryCapacity;
   const maxEnergyKWh = targetSoc * batteryCapacity;
   const usableCapacityKWh = Math.max(0, maxEnergyKWh - currentEnergyKWh);
+  const socUpperBoundKWh = Math.max(currentEnergyKWh, maxEnergyKWh);
 
   if (usableCapacityKWh < 0.01 && currentEnergyKWh < 0.01) {
     if (logger) {
@@ -210,7 +211,11 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
 
   if (logger) {
     logger.log('\n=== LP OPTIMIZATION ===');
-    logger.log(`Intervals: ${num}, Battery: ${currentEnergyKWh.toFixed(2)} kWh / ${maxEnergyKWh.toFixed(2)} kWh`);
+    logger.log(`Intervals: ${num}, Stored energy: ${currentEnergyKWh.toFixed(2)} kWh, optimization target window: ${maxEnergyKWh.toFixed(2)} kWh`);
+    logger.log(`Charge headroom within target window: ${usableCapacityKWh.toFixed(2)} kWh`);
+    if (currentEnergyKWh > maxEnergyKWh + 0.01) {
+      logger.log(`Starting above target window: allowing up to ${socUpperBoundKWh.toFixed(2)} kWh of existing stored energy so the LP can plan later discharge instead of failing immediately.`);
+    }
     logger.log(`Charge/Discharge power: ${chargePowerKW} kW per interval`);
     if (effectiveMinEnergyKWh > 0) {
       logger.log(`Min energy constraint: ${effectiveMinEnergyKWh.toFixed(2)} kWh`);
@@ -304,9 +309,10 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     variables[d0Var][dCapName] = 1;
     variables[d1Var][dCapName] = 1;
 
-    // SoC upper bound: soc_t <= maxEnergyKWh
+    // SoC upper bound: keep the target window as the charging ceiling, but allow
+    // already-stored above-target energy to remain feasible until it can be discharged.
     const sCapName = `sCap_${t}`;
-    constraints[sCapName] = { max: maxEnergyKWh };
+    constraints[sCapName] = { max: socUpperBoundKWh };
     variables[sVar][sCapName] = 1;
 
     // SoC lower bound (min SoC threshold): soc_t >= effectiveMinEnergyKWh
