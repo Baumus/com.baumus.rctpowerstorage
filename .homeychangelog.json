@@ -163,5 +163,8 @@
   },
   "4.3.9": {
     "en": "Refactor battery cost calculation and optimize strategy logic"
+  },
+  "4.3.10": {
+    "en": "optimised dashboard UI"
   }
 }
