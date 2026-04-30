@@ -274,8 +274,8 @@ function getNextAction(host, strategy, now) {
 
 function getBatteryDirection(batteryPowerW) {
   if (!Number.isFinite(batteryPowerW)) return 'unknown';
-  if (batteryPowerW > POWER_DEADBAND_W) return 'discharging';
-  if (batteryPowerW < -POWER_DEADBAND_W) return 'charging';
+  if (batteryPowerW < POWER_DEADBAND_W) return 'discharging';
+  if (batteryPowerW > -POWER_DEADBAND_W) return 'charging';
   return 'idle';
 }
 
