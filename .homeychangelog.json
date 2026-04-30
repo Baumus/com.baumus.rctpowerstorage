@@ -169,5 +169,8 @@
   },
   "4.3.11": {
     "en": "fix: dashboard optimized"
+  },
+  "4.3.12": {
+    "en": "fix: dashboard battery display logic"
   }
 }
