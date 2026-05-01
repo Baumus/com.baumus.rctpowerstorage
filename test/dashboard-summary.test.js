@@ -31,7 +31,7 @@ describe('dashboard summary service', () => {
       liveEnergyState: {
         gridPowerW: 1800,
         solarPowerW: 120,
-        batteryPowerW: -3200,
+        batteryPowerW: 3200,
         source: 'strategy-execution',
         updatedAt: '2026-04-29T10:05:00.000Z',
       },
@@ -71,8 +71,8 @@ describe('dashboard summary service', () => {
     const summary = buildDashboardSummary(host, strategy);
 
     expect(summary.currentAction.key).toBe('charging');
-    expect(summary.currentAction.title).toBe('Batterie laedt aus dem Netz');
-    expect(summary.currentReason).toMatch(/guenstigen Ladefenster/);
+    expect(summary.currentAction.title).toBe('Batterie lädt aus dem Netz');
+    expect(summary.currentReason).toMatch(/günstigen Ladefenster/);
     expect(summary.nextAction.key).toBe('next-charge-window');
     expect(summary.chargePlan.hasPlan).toBe(true);
     expect(summary.chargePlan.totalEnergyKWh).toBeCloseTo(4.2, 6);
@@ -82,7 +82,7 @@ describe('dashboard summary service', () => {
     expect(summary.savings.todayForecastEur).toBeCloseTo(1.85, 6);
     expect(summary.savings.realized.currentMonthEur).toBeCloseTo(0.42, 6);
     expect(summary.savings.realized.last365DaysEur).toBeCloseTo(0.77, 6);
-    expect(summary.energyFlow.title).toBe('Netz laedt die Batterie');
+    expect(summary.energyFlow.title).toBe('Netz lädt die Batterie');
     expect(summary.energyFlow.grid).toBe('importing');
     expect(summary.energyFlow.battery).toBe('charging');
     expect(summary.battery.freeCapacityToTargetKWh).toBeCloseTo(3.3, 6);
@@ -153,10 +153,44 @@ describe('dashboard summary service', () => {
       },
     });
 
-    expect(summary.energyFlow.title).toBe('Solar versorgt das Haus und speist Ueberschuss ein');
+    expect(summary.energyFlow.title).toBe('Solar versorgt das Haus und speist Überschuss ein');
     expect(summary.energyFlow.grid).toBe('exporting');
     expect(summary.energyFlow.solar).toBe('active');
     expect(summary.energyFlow.battery).toBe('idle');
+  });
+
+  it('describes solar-only house supply when battery power is within deadband', () => {
+    const host = createHost({
+      lastBatteryMode: BATTERY_MODE.NORMAL,
+      _dashboardSummaryNow: new Date('2026-04-29T12:30:00.000Z'),
+      liveEnergyState: {
+        gridPowerW: 0,
+        solarPowerW: 4100,
+        batteryPowerW: 12,
+        source: 'data-collection',
+        updatedAt: '2026-04-29T12:30:00.000Z',
+      },
+    });
+
+    const summary = buildDashboardSummary(host, {
+      chargeIntervals: [],
+      dischargeIntervals: [],
+      batteryStatus: {
+        currentSoc: 0.78,
+        targetSoc: 0.8,
+        availableCapacity: 0.2,
+        availableCapacityToTarget: 0.2,
+        excessEnergyAboveTargetKWh: 0,
+        storedKWh: 7.8,
+        energyCost: null,
+      },
+    });
+
+    expect(summary.energyFlow.title).toBe('Solar versorgt das Haus');
+    expect(summary.energyFlow.detail).toBe('Der aktuelle Hausverbrauch wird im Wesentlichen direkt aus Solar gedeckt.');
+    expect(summary.energyFlow.battery).toBe('idle');
+    expect(summary.energyFlow.house).toBe('solar-supported');
+    expect(summary.energyFlow.grid).toBe('balanced');
   });
 
   it('shows the next discharge phase when it starts before the next charge window', () => {
@@ -191,7 +225,7 @@ describe('dashboard summary service', () => {
     });
 
     expect(summary.nextAction.key).toBe('next-expensive-window');
-    expect(summary.nextAction.title).toBe('Naechste teure Phase');
+    expect(summary.nextAction.title).toBe('Nächste teure Phase');
     expect(summary.dischargePlan.hasPlan).toBe(true);
     expect(summary.dischargePlan.windowCount).toBe(1);
     expect(summary.dischargePlan.nextStart).toBe('2026-04-29T14:00:00.000Z');
