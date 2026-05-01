@@ -172,5 +172,8 @@
   },
   "4.3.12": {
     "en": "fix: dashboard battery display logic"
+  },
+  "4.3.13": {
+    "en": "fix: correct battery direction logic"
   }
 }
