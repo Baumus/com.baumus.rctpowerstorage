@@ -41,6 +41,10 @@
         "title": "Batterie lädt aus dem Netz",
         "detail": "Gerade läuft ein geplantes günstiges Ladefenster."
       },
+      "optimizer_disabled": {
+        "title": "Optimizer ist ausgeschaltet",
+        "detail": "Live-Messwerte können weiter sichtbar sein, der Optimierungsplan wird aktuell aber nicht ausgeführt."
+      },
       "supplying_house": {
         "title": "Batterie versorgt das Haus",
         "detail": "Gespeicherte Energie wird genutzt, um teuren Netzbezug zu vermeiden."
@@ -58,10 +62,16 @@
     "current_reason": {
       "active_charge": "Der aktuelle Strompreis liegt in einem geplanten günstigen Ladefenster.",
       "active_discharge": "Die aktuelle Zeit wurde als teuer eingestuft, deshalb wird gespeicherte Energie bevorzugt genutzt.",
+      "optimizer_disabled": "Der Optimizer ist deaktiviert. Vorhandene Lade- und Entladepläne werden aktuell nicht angewendet.",
       "waiting_for_later_cheap_slots": "Es gibt günstige Preisfenster später am Tag, daher wird jetzt gewartet.",
       "no_economic_window": "Es wurde aktuell kein wirtschaftlich sinnvolles Netzladefenster gefunden."
     },
     "next_action": {
+      "optimizer_disabled": {
+        "title": "Plan ist pausiert",
+        "detail_with_plan": "Es gibt einen berechneten Plan, aber er wird erst nach erneutem Aktivieren des Optimizers ausgeführt.",
+        "detail_without_plan": "Es liegt aktuell kein aktiver Lade- oder Entladeplan vor."
+      },
       "next_charge_window": {
         "title": "Nächstes Ladefenster",
         "detail": "Die nächste Netzladung startet, sobald das günstige Preisfenster beginnt."
@@ -112,6 +122,10 @@
       "holding_from_grid": {
         "title": "Batterie wartet, Haus nutzt Netz",
         "detail": "Die Batterie wird gehalten und nicht zur Versorgung freigegeben."
+      },
+      "optimizer_disabled": {
+        "title": "Keine Live-Messwerte verfügbar",
+        "detail": "Der Optimizer ist ausgeschaltet. Es liegen aktuell keine frischen Live-Messwerte für den Energiefluss vor."
       }
     }
   },
@@ -157,15 +171,19 @@
       "no_data": "Unbekannt"
     },
     "summary": {
+      "eyebrow_optimizer_state": "Optimizer-Status",
       "eyebrow_current_battery_mode": "Aktueller Batteriemodus",
       "no_data": "Keine Daten",
       "unavailable": "Eine erklärende Dashboard-Zusammenfassung ist für dieses Gerät noch nicht verfügbar.",
+      "calculated_plan": "Berechneter Plan",
+      "latest_forecast": "Letzte Prognose",
       "next_event": "Nächstes Ereignis",
       "today_forecast": "Heutige Prognose",
       "next_not_scheduled": "Nicht geplant",
       "battery_line": "{soc}% SoC · Ziel-SoC {target}%",
       "battery_status_unavailable": "Batteriestatus nicht verfügbar",
       "capacity_line": "Freier Ladeplatz bis Ziel-SoC: {capacity} kWh",
+      "capacity_line_paused": "Freier Ladeplatz bis Ziel-SoC laut letztem Plan: {capacity} kWh",
       "no_capacity_available": "Kein freier Ladeplatz bis zum Ziel-SoC",
       "above_target_line": "Batterie liegt {delta}% über dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfügbar.",
       "current_energy_flow": "Aktueller Energiefluss",
@@ -173,6 +191,9 @@
       "no_next_event": "Kein weiteres Ereignis geplant",
       "energy_flow_unknown": "Energiefluss unbekannt",
       "energy_flow_no_measurements": "Es liegen noch keine Live-Messwerte vor.",
+      "plan_paused_note": "Der Optimizer ist deaktiviert. Berechnete Pläne werden aktuell nicht ausgeführt.",
+      "forecast_paused_subtext": "Dies ist die letzte berechnete Prognose und aktuell nur informativ.",
+      "live_flow_when_paused": "Dieser Energiefluss beschreibt nur den Live-Zustand, nicht die aktive Optimizer-Steuerung.",
       "plan_window_subtext": "{energy} kWh zu Ø {price} €/kWh",
       "discharge_plan_subtext": "{count} Entladefenster geplant · Erste Phase: {time}",
       "today_forecast_subtext": "Geschätzte Optimierungswirkung für den aktuellen Plan.",
@@ -183,21 +204,29 @@
       "battery": "Batterie"
     },
     "stats": {
+      "paused": "Pausiert",
+      "optimizer_state": "Optimizer-Status",
       "charge_slots": "Ladefenster",
+      "planned_charge_slots": "Geplante Ladefenster",
       "expensive_periods": "Teure Phasen",
+      "planned_expensive_periods": "Geplante teure Phasen",
       "avg_price": "Ø €/kWh",
+      "plan_avg_price": "Plan-Ø €/kWh",
       "free_capacity": "Freie kWh bis Ziel",
+      "last_free_capacity": "Letzte freie kWh bis Ziel",
       "planned_charge": "Geplante Ladung kWh",
       "forecast_demand": "Prognostizierter Bedarf kWh"
     },
     "price_legend": {
       "planned_grid_charge": {
         "title": "Geplante Netzladung",
-        "detail": "Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant."
+        "detail": "Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.",
+        "detail_paused": "Gelb markiert berechnete Netzladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ."
       },
       "expensive_use": {
         "title": "Teure Verbrauchszeit",
-        "detail": "Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist."
+        "detail": "Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.",
+        "detail_paused": "Rot markiert berechnete teure Phasen. Diese Steuerung ist aktuell pausiert."
       },
       "cheap_window": {
         "title": "Günstige Preiszeit",
@@ -223,9 +252,12 @@
       "battery_support": "🔋 Batterie versorgt das Haus",
       "battery_support_with_demand": "🔋 Batterie versorgt das Haus ({demand} kWh)",
         "no_plan": "Aktuell gibt es noch keinen Optimierungsplan für Laden oder Batterienutzung.",
+        "planner_kicker_status": "Systemstatus",
         "planner_kicker_overview": "Planübersicht",
         "planner_kicker_plan": "Optimierungsplan",
         "planner_kicker_usage": "Batterienutzung",
+      "optimizer_paused": "Optimizer ist pausiert",
+      "optimizer_paused_note": "Die folgenden Planwerte stammen aus der letzten Berechnung und werden aktuell nicht automatisch ausgeführt.",
       "battery_and_costs": "Batterie und Energiekosten",
         "battery_and_costs_note": "Die wichtigsten Speicher- und Kostendaten für den aktuellen Optimierungsplan.",
       "charge_level": "Ladestand",

@@ -883,8 +883,8 @@
                 // Render all sections
                 renderDashboardSummary(device, dashboardSummary);
                 renderStats(strategy, dashboardSummary);
-                renderPriceChart(strategy, priceCache);
-                renderTimeline(strategy);
+                renderPriceChart(strategy, priceCache, dashboardSummary, device);
+                renderTimeline(strategy, dashboardSummary, device);
                 
                 // Show content
                 document.getElementById('loading').hidden = true;
@@ -907,11 +907,26 @@
             }
         }
         
+        function getOptimizerUiState(device, summary) {
+            const deviceEnabled = device?.capabilities?.onoff;
+            const summaryEnabled = summary?.optimizer?.enabled;
+            const optimizerEnabled = typeof summaryEnabled === 'boolean'
+                ? summaryEnabled
+                : deviceEnabled !== false;
+
+            return {
+                optimizerEnabled,
+                planPaused: !optimizerEnabled,
+                hasLiveMeasurements: !!summary?.optimizer?.hasLiveMeasurements,
+            };
+        }
+
         function renderDashboardSummary(device, summary) {
             const container = document.getElementById('dashboardSummaryContainer');
             const fallbackStatus = device.capabilities?.optimizer_status || t('settings_page.summary.no_data', 'Keine Daten');
             const fallbackNextCharge = device.capabilities?.next_charge_start || t('settings_page.summary.next_not_scheduled', 'Nicht geplant');
             const fallbackSavings = device.capabilities?.estimated_savings || 0;
+            const uiState = getOptimizerUiState(device, summary);
 
             if (!summary || !summary.currentAction) {
                 container.innerHTML = `
@@ -955,11 +970,17 @@
                 }, '{count} Entladefenster geplant · Erste Phase: {time}')
                 : '';
             const nextPanelLines = [nextTime, nextPlanInfo, dischargePlanInfo].filter(Boolean).join('<br>');
-            const forecastSubtext = planHorizon.displayTime
-                ? formatText('settings_page.summary.today_forecast_until_subtext', {
-                    time: planHorizon.displayTime,
-                }, 'Geschätzte Optimierungswirkung für den aktuellen Plan bis {time}.')
-                : t('settings_page.summary.today_forecast_subtext', 'Geschätzte Optimierungswirkung für den aktuellen Plan.');
+            const pausedPlanNote = uiState.planPaused
+                ? t('settings_page.summary.plan_paused_note', 'Der Optimizer ist deaktiviert. Berechnete Plaene werden aktuell nicht ausgefuehrt.')
+                : '';
+            const nextPanelSubtext = [pausedPlanNote, nextPanelLines || nextTime].filter(Boolean).join('<br>');
+            const forecastSubtext = uiState.planPaused
+                ? t('settings_page.summary.forecast_paused_subtext', 'Dies ist die letzte berechnete Prognose und aktuell nur informativ.')
+                : (planHorizon.displayTime
+                    ? formatText('settings_page.summary.today_forecast_until_subtext', {
+                        time: planHorizon.displayTime,
+                    }, 'Geschätzte Optimierungswirkung für den aktuellen Plan bis {time}.')
+                    : t('settings_page.summary.today_forecast_subtext', 'Geschätzte Optimierungswirkung für den aktuellen Plan.'));
             const batteryLine = battery.currentSocPercent !== undefined
                 ? formatText('settings_page.summary.battery_line', {
                     soc: Number(battery.currentSocPercent).toFixed(1),
@@ -967,35 +988,48 @@
                 }, '{soc}% SoC · Ziel-SoC {target}%')
                 : t('settings_page.summary.battery_status_unavailable', 'Batteriestatus nicht verfuegbar');
             const capacityLine = battery.freeCapacityToTargetKWh !== undefined
-                ? formatText('settings_page.summary.capacity_line', {
+                ? formatText(uiState.planPaused ? 'settings_page.summary.capacity_line_paused' : 'settings_page.summary.capacity_line', {
                     capacity: Number(battery.freeCapacityToTargetKWh).toFixed(2),
-                }, 'Freier Ladeplatz bis Ziel-SoC: {capacity} kWh')
+                }, uiState.planPaused ? 'Freier Ladeplatz bis Ziel-SoC laut letztem Plan: {capacity} kWh' : 'Freier Ladeplatz bis Ziel-SoC: {capacity} kWh')
                 : t('settings_page.summary.no_capacity_available', 'Kein freier Ladeplatz bis zum Ziel-SoC');
             const aboveTargetLine = battery.aboveTargetDeltaPercent > 0
                 ? formatText('settings_page.summary.above_target_line', {
                     delta: Number(battery.aboveTargetDeltaPercent).toFixed(1),
                 }, 'Batterie liegt {delta}% ueber dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfuegbar.')
                 : '';
+            const eyebrowText = uiState.planPaused
+                ? t('settings_page.summary.eyebrow_optimizer_state', 'Optimizer-Status')
+                : t('settings_page.summary.eyebrow_current_battery_mode', 'Aktueller Batteriemodus');
+            const nextPanelLabel = uiState.planPaused
+                ? t('settings_page.summary.calculated_plan', 'Berechneter Plan')
+                : t('settings_page.summary.next_up', 'Als Naechstes');
+            const forecastLabel = uiState.planPaused
+                ? t('settings_page.summary.latest_forecast', 'Letzte Prognose')
+                : t('settings_page.summary.today_forecast', 'Heutige Prognose');
+            const energyFlowSubtext = [
+                summary.energyFlow?.detail || t('settings_page.summary.energy_flow_no_measurements', 'Es liegen noch keine Live-Messwerte vor.'),
+                uiState.planPaused ? t('settings_page.summary.live_flow_when_paused', 'Dieser Energiefluss beschreibt nur den Live-Zustand, nicht die aktive Optimizer-Steuerung.') : '',
+            ].filter(Boolean).join('<br>');
 
             container.innerHTML = `
                 <div class="summary-hero ${action.tone || 'neutral'}">
-                    <div class="summary-eyebrow">${t('settings_page.summary.eyebrow_current_battery_mode', 'Aktueller Batteriemodus')}</div>
+                    <div class="summary-eyebrow">${eyebrowText}</div>
                     <div class="summary-title">${action.title || fallbackStatus}</div>
-                    <div class="summary-detail">${action.detail || summary.currentReason || ''}</div>
+                    <div class="summary-detail">${[action.detail || '', summary.currentReason || ''].filter(Boolean).join(' ')}</div>
                 </div>
                 <div class="summary-grid">
                     <div class="summary-panel">
                         <div class="summary-panel-label">${t('settings_page.summary.current_energy_flow', 'Aktueller Energiefluss')}</div>
                         <div class="summary-panel-value">${summary.energyFlow?.title || t('settings_page.summary.energy_flow_unknown', 'Energiefluss unbekannt')}</div>
-                        <div class="summary-panel-subtext">${summary.energyFlow?.detail || t('settings_page.summary.energy_flow_no_measurements', 'Es liegen noch keine Live-Messwerte vor.')}</div>
+                        <div class="summary-panel-subtext">${energyFlowSubtext}</div>
                     </div>
                     <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.next_up', 'Als Naechstes')}</div>
+                        <div class="summary-panel-label">${nextPanelLabel}</div>
                         <div class="summary-panel-value">${nextAction.title || t('settings_page.summary.no_next_event', 'Kein weiteres Ereignis geplant')}</div>
-                        <div class="summary-panel-subtext">${nextPanelLines || nextTime}</div>
+                        <div class="summary-panel-subtext">${nextPanelSubtext}</div>
                     </div>
                     <div class="summary-panel">
-                        <div class="summary-panel-label">${t('settings_page.summary.today_forecast', 'Heutige Prognose')}</div>
+                        <div class="summary-panel-label">${forecastLabel}</div>
                         <div class="summary-panel-value">€${Number(savings.todayForecastEur || 0).toFixed(2)}</div>
                         <div class="summary-panel-subtext">${forecastSubtext}</div>
                     </div>
@@ -1060,6 +1094,7 @@
         }
         
         function renderStats(strategy, summary) {
+            const uiState = getOptimizerUiState(null, summary);
             const chargeIntervals = strategy.chargeIntervals?.length || 0;
             const expensiveIntervals = getDischargeIntervals(strategy).length;
             const avgPrice = strategy.avgPrice ? strategy.avgPrice.toFixed(4) : '-';
@@ -1071,21 +1106,27 @@
             
             const html = `
                 <div class="info-grid">
+                    ${uiState.planPaused ? `
+                    <div class="info-item">
+                        <div class="info-value">${t('settings_page.stats.paused', 'Pausiert')}</div>
+                        <div class="info-label">${t('settings_page.stats.optimizer_state', 'Optimizer-Status')}</div>
+                    </div>
+                    ` : ''}
                     <div class="info-item">
                         <div class="info-value">${chargeIntervals}</div>
-                        <div class="info-label">${t('settings_page.stats.charge_slots', 'Charge Slots')}</div>
+                        <div class="info-label">${t(uiState.planPaused ? 'settings_page.stats.planned_charge_slots' : 'settings_page.stats.charge_slots', uiState.planPaused ? 'Planned Charge Slots' : 'Charge Slots')}</div>
                     </div>
                     <div class="info-item">
                         <div class="info-value">${expensiveIntervals}</div>
-                        <div class="info-label">${t('settings_page.stats.expensive_periods', 'Exp. Periods')}</div>
+                        <div class="info-label">${t(uiState.planPaused ? 'settings_page.stats.planned_expensive_periods' : 'settings_page.stats.expensive_periods', uiState.planPaused ? 'Planned Exp. Periods' : 'Exp. Periods')}</div>
                     </div>
                     <div class="info-item">
                         <div class="info-value">${avgPrice}</div>
-                        <div class="info-label">${t('settings_page.stats.avg_price', 'Avg €/kWh')}</div>
+                        <div class="info-label">${t(uiState.planPaused ? 'settings_page.stats.plan_avg_price' : 'settings_page.stats.avg_price', uiState.planPaused ? 'Plan Avg €/kWh' : 'Avg €/kWh')}</div>
                     </div>
                     <div class="info-item">
                         <div class="info-value">${freeCapacity}</div>
-                        <div class="info-label">${t('settings_page.stats.free_capacity', 'Free kWh To Target')}</div>
+                        <div class="info-label">${t(uiState.planPaused ? 'settings_page.stats.last_free_capacity' : 'settings_page.stats.free_capacity', uiState.planPaused ? 'Last Free kWh To Target' : 'Free kWh To Target')}</div>
                     </div>
                     ${neededKWh !== '-' ? `
                     <div class="info-item">
@@ -1105,17 +1146,18 @@
             document.getElementById('statsContainer').innerHTML = html;
         }
 
-        function renderPriceLegend() {
+        function renderPriceLegend(summary, device) {
+            const uiState = getOptimizerUiState(device, summary);
             const legendItems = [
                 {
                     swatchClass: 'charging',
                     title: t('settings_page.price_legend.planned_grid_charge.title', 'Geplante Netzladung'),
-                    detail: t('settings_page.price_legend.planned_grid_charge.detail', 'Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.'),
+                    detail: t(uiState.planPaused ? 'settings_page.price_legend.planned_grid_charge.detail_paused' : 'settings_page.price_legend.planned_grid_charge.detail', uiState.planPaused ? 'Gelb markiert berechnete Netzladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ.' : 'Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.'),
                 },
                 {
                     swatchClass: 'expensive',
                     title: t('settings_page.price_legend.expensive_use.title', 'Teure Verbrauchszeit'),
-                    detail: t('settings_page.price_legend.expensive_use.detail', 'Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.'),
+                    detail: t(uiState.planPaused ? 'settings_page.price_legend.expensive_use.detail_paused' : 'settings_page.price_legend.expensive_use.detail', uiState.planPaused ? 'Rot markiert berechnete teure Phasen. Diese Steuerung ist aktuell pausiert.' : 'Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.'),
                 },
                 {
                     swatchClass: 'cheap',
@@ -1145,12 +1187,12 @@
             `).join('');
         }
         
-        function renderPriceChart(strategy, priceCache) {
+        function renderPriceChart(strategy, priceCache, summary, device) {
             console.log('=== renderPriceChart START ===');
             const chartBars = document.getElementById('chartBars');
             const chartYAxis = document.getElementById('chartYAxis');
             const chartXAxis = document.getElementById('chartXAxis');
-            renderPriceLegend();
+            renderPriceLegend(summary, device);
             
             if (!priceCache || priceCache.length === 0) {
                 chartBars.innerHTML = `<div class="no-data">${t('settings_page.price_chart.no_price_data', 'No price data available')}</div>`;
@@ -1290,8 +1332,9 @@
             return t('settings_page.timeline.battery_support', '🔋 Batterie versorgt das Haus');
         }
         
-        function renderTimeline(strategy) {
+        function renderTimeline(strategy, summary, device) {
             const container = document.getElementById('timelineContainer');
+            const uiState = getOptimizerUiState(device, summary);
 
             const safeToFixed = (value, digits, fallback = '-') => {
                 if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -1308,6 +1351,20 @@
             }
             
             let html = '';
+
+            if (uiState.planPaused) {
+                html += `
+                    <div class="planner-section">
+                        <div class="planner-section-header">
+                            <div>
+                                <div class="planner-section-kicker">${t('settings_page.timeline.planner_kicker_status', 'Systemstatus')}</div>
+                                <h3 class="planner-section-heading">${t('settings_page.timeline.optimizer_paused', 'Optimizer ist pausiert')}</h3>
+                                <p class="planner-section-note">${t('settings_page.timeline.optimizer_paused_note', 'Die folgenden Planwerte stammen aus der letzten Berechnung und werden aktuell nicht automatisch ausgefuehrt.')}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             
             // Battery Status Section (NEW)
             if (strategy.batteryStatus) {

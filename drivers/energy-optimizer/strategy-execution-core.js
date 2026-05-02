@@ -1,5 +1,7 @@
 'use strict';
 
+const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('./constants');
+
 /**
  * Strategy execution logic - pure functions for battery mode decisions
  * This module determines what battery mode should be active based on
@@ -42,6 +44,42 @@ function findCurrentIntervalIndex(now, priceCache, intervalMinutes = 15) {
  */
 function hasModeChanged(newMode, lastMode) {
   return newMode !== lastMode && lastMode !== null;
+}
+
+function getPlannedGridEnergyKWh(interval) {
+  if (!interval || typeof interval !== 'object') return 0;
+  if (Number.isFinite(interval.plannedGridEnergyKWh)) return interval.plannedGridEnergyKWh;
+  if (Array.isArray(interval.plannedChargeParts)) {
+    return interval.plannedChargeParts
+      .filter((part) => part && part.source === 'grid')
+      .reduce((sum, part) => sum + (Number.isFinite(part.energyKWh) ? part.energyKWh : 0), 0);
+  }
+  if (interval.plannedEnergySource === 'grid' && Number.isFinite(interval.plannedEnergyKWh)) {
+    return interval.plannedEnergyKWh;
+  }
+  return 0;
+}
+
+function getFutureCheapGridChargeReservation(strategy, currentStartMs, feedInTariff) {
+  if (!Array.isArray(strategy?.chargeIntervals) || !Number.isFinite(currentStartMs)) {
+    return { energyKWh: 0, cheapestPrice: null };
+  }
+
+  return strategy.chargeIntervals.reduce((result, interval) => {
+    if (!interval || typeof interval !== 'object' || !interval.startsAt) return result;
+
+    const intervalMs = new Date(interval.startsAt).getTime();
+    if (!Number.isFinite(intervalMs) || intervalMs <= currentStartMs) return result;
+
+    const plannedGridEnergyKWh = getPlannedGridEnergyKWh(interval);
+    const intervalPrice = Number.isFinite(interval.total) ? interval.total : null;
+    if (!(plannedGridEnergyKWh > 0) || !(intervalPrice < feedInTariff)) return result;
+
+    return {
+      energyKWh: result.energyKWh + plannedGridEnergyKWh,
+      cheapestPrice: result.cheapestPrice === null ? intervalPrice : Math.min(result.cheapestPrice, intervalPrice),
+    };
+  }, { energyKWh: 0, cheapestPrice: null });
 }
 
 /**
@@ -126,6 +164,7 @@ function decideBatteryMode(params) {
     && currentSocPercent <= minSocThresholdPercent;
 
   const SOLAR_START_THRESHOLD_W = 50;
+  const SOLAR_HEADROOM_RESERVATION_THRESHOLD_W = 300;
   const isSolarActive = (typeof solarProductionW === 'number' && Number.isFinite(solarProductionW))
     && solarProductionW > SOLAR_START_THRESHOLD_W;
 
@@ -206,6 +245,20 @@ function decideBatteryMode(params) {
     };
   }
 
+  const availableCapacityToTargetKWh = Number.isFinite(strategy?.batteryStatus?.availableCapacityToTarget)
+    ? strategy.batteryStatus.availableCapacityToTarget
+    : (Number.isFinite(strategy?.batteryStatus?.availableCapacity) ? strategy.batteryStatus.availableCapacity : null);
+  const futureCheapGridReservation = getFutureCheapGridChargeReservation(
+    strategy,
+    currentStartMs,
+    SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
+  );
+  const shouldReserveHeadroomForCheapGridCharge = isSolarActive
+    && solarProductionW >= SOLAR_HEADROOM_RESERVATION_THRESHOLD_W
+    && Number.isFinite(availableCapacityToTargetKWh)
+    && futureCheapGridReservation.energyKWh > 0.001
+    && availableCapacityToTargetKWh + 0.001 < futureCheapGridReservation.energyKWh;
+
   // Priority 3: Default interval
   // When PV is active, switch between NORMAL and CONSTANT based on gridPower thresholds
   // to avoid feeding excess solar into the grid while still preventing discharge when importing.
@@ -213,6 +266,14 @@ function decideBatteryMode(params) {
     const hasGridPower = typeof gridPower === 'number' && Number.isFinite(gridPower);
     const solarThreshold = (thresholds && Number.isFinite(thresholds.solarThreshold)) ? thresholds.solarThreshold : -300;
     const consumptionThreshold = (thresholds && Number.isFinite(thresholds.consumptionThreshold)) ? thresholds.consumptionThreshold : 300;
+
+    if (shouldReserveHeadroomForCheapGridCharge) {
+      return {
+        mode: BATTERY_MODE.CONSTANT,
+        intervalIndex: currentIntervalIndex,
+        reason: `PV active (${solarProductionW.toFixed(0)} W) but reserving ${futureCheapGridReservation.energyKWh.toFixed(2)} kWh headroom for future grid charging below feed-in tariff (min ${futureCheapGridReservation.cheapestPrice?.toFixed(4)} €/kWh < ${SOLAR_FEED_IN_TARIFF_EUR_PER_KWH.toFixed(4)} €/kWh)`,
+      };
+    }
 
     if (hasGridPower && gridPower <= solarThreshold) {
       return {

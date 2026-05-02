@@ -1058,6 +1058,116 @@ describe('Settings Page Data Rendering', () => {
       expect(aboveTargetLine).toBe('Batterie liegt 11.0% ueber dem Zielwert. Dieser Anteil bleibt als Entladepuffer verfuegbar.');
     });
 
+    it('should derive paused optimizer labels and copy from disabled summary state', () => {
+      const device = {
+        capabilities: {
+          optimizer_status: 'Stopped',
+          next_charge_start: 'Not scheduled',
+          estimated_savings: 0.75,
+          onoff: false,
+        },
+      };
+
+      const summary = {
+        optimizer: {
+          enabled: false,
+          planExecutionActive: false,
+          hasLiveMeasurements: true,
+        },
+        currentAction: {
+          key: 'optimizer-disabled',
+          title: 'Optimizer ist ausgeschaltet',
+          detail: 'Live-Messwerte koennen weiter sichtbar sein, der Optimierungsplan wird aktuell aber nicht ausgefuehrt.',
+          tone: 'neutral',
+        },
+        currentReason: 'Der Optimizer ist deaktiviert. Vorhandene Lade- und Entladeplaene werden aktuell nicht angewendet.',
+        energyFlow: {
+          title: 'Solar versorgt das Haus und speist Ueberschuss ein',
+          detail: 'Aktuell ist mehr Solarstrom verfuegbar als Haus und Batterie aufnehmen.',
+        },
+        nextAction: {
+          title: 'Plan ist pausiert',
+          key: 'optimizer-disabled',
+          displayTime: '29.04.2026, 16:00',
+        },
+        chargePlan: {
+          hasPlan: true,
+          summary: 'Netzladung ist geplant, weil guenstige Preisfenster erkannt wurden.',
+          totalEnergyKWh: 4.25,
+          avgPriceEurPerKWh: 0.0625,
+        },
+        dischargePlan: {
+          hasPlan: true,
+          windowCount: 7,
+          nextStart: '2026-04-29T16:30:00.000Z',
+        },
+        savings: {
+          todayForecastEur: 0.75,
+          realized: {
+            currentMonthEur: 1.75,
+            lastMonthEur: 2.5,
+            last365DaysEur: 18.25,
+          },
+        },
+        planHorizon: {
+          hasPlan: true,
+          endsAt: '2026-04-29T20:45:00.000Z',
+          displayTime: '29.04.2026, 22:45',
+        },
+        battery: {
+          currentSocPercent: 91,
+          targetSocPercent: 80,
+          freeCapacityToTargetKWh: 0,
+          aboveTargetDeltaPercent: 11,
+        },
+      };
+
+      const planPaused = summary?.optimizer?.enabled === false || device.capabilities.onoff === false;
+      const eyebrowText = planPaused ? 'Optimizer-Status' : 'Aktueller Batteriemodus';
+      const nextPanelLabel = planPaused ? 'Berechneter Plan' : 'Als Naechstes';
+      const forecastLabel = planPaused ? 'Letzte Prognose' : 'Heutige Prognose';
+      const nextTime = summary.nextAction.displayTime || t('settings_page.summary.next_not_scheduled');
+      const nextPlanInfo = (summary.chargePlan.hasPlan && summary.nextAction.key === 'next-charge-window')
+        ? formatText('settings_page.summary.plan_window_subtext', {
+          energy: Number(summary.chargePlan.totalEnergyKWh || 0).toFixed(2),
+          price: Number(summary.chargePlan.avgPriceEurPerKWh || 0).toFixed(4),
+        })
+        : '';
+      const dischargePlanInfo = summary.dischargePlan.hasPlan
+        ? formatText('settings_page.summary.discharge_plan_subtext', {
+          count: Number(summary.dischargePlan.windowCount || 0),
+          time: formatDisplayDateTime(summary.dischargePlan.nextStart, 'de-DE'),
+        })
+        : '';
+      const pausedPlanNote = planPaused
+        ? 'Der Optimizer ist deaktiviert. Berechnete Plaene werden aktuell nicht ausgefuehrt.'
+        : '';
+      const nextPanelSubtext = [pausedPlanNote, [nextTime, nextPlanInfo, dischargePlanInfo].filter(Boolean).join('<br>') || nextTime].filter(Boolean).join('<br>');
+      const forecastSubtext = planPaused
+        ? 'Dies ist die letzte berechnete Prognose und aktuell nur informativ.'
+        : formatText('settings_page.summary.today_forecast_until_subtext', {
+          time: summary.planHorizon.displayTime,
+        });
+      const energyFlowSubtext = [
+        summary.energyFlow.detail,
+        planPaused ? 'Dieser Energiefluss beschreibt nur den Live-Zustand, nicht die aktive Optimizer-Steuerung.' : '',
+      ].filter(Boolean).join('<br>');
+      const capacityLine = (planPaused
+        ? 'Freier Ladeplatz bis Ziel-SoC laut letztem Plan: {capacity} kWh'
+        : formatText('settings_page.summary.capacity_line', {
+          capacity: Number(summary.battery.freeCapacityToTargetKWh).toFixed(2),
+        })
+      ).replace('{capacity}', Number(summary.battery.freeCapacityToTargetKWh).toFixed(2));
+
+      expect(eyebrowText).toBe('Optimizer-Status');
+      expect(nextPanelLabel).toBe('Berechneter Plan');
+      expect(forecastLabel).toBe('Letzte Prognose');
+      expect(nextPanelSubtext).toBe('Der Optimizer ist deaktiviert. Berechnete Plaene werden aktuell nicht ausgefuehrt.<br>29.04.2026, 16:00<br>7 Entladefenster geplant · Erste Phase: 29.04.2026, 18:30');
+      expect(forecastSubtext).toBe('Dies ist die letzte berechnete Prognose und aktuell nur informativ.');
+      expect(energyFlowSubtext).toBe('Aktuell ist mehr Solarstrom verfuegbar als Haus und Batterie aufnehmen.<br>Dieser Energiefluss beschreibt nur den Live-Zustand, nicht die aktive Optimizer-Steuerung.');
+      expect(capacityLine).toBe('Freier Ladeplatz bis Ziel-SoC laut letztem Plan: 0.00 kWh');
+    });
+
     it('should derive technical detail metrics from summary plus strategy', () => {
       const device = {
         capabilities: {

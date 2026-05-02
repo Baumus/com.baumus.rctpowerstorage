@@ -42,6 +42,10 @@
         "title": "Battery charging from grid",
         "detail": "A planned low-price charging window is active right now."
       },
+      "optimizer_disabled": {
+        "title": "Optimizer is disabled",
+        "detail": "Live measurements may still be visible, but the optimization plan is not currently being executed."
+      },
       "supplying_house": {
         "title": "Battery is supplying the house",
         "detail": "Stored energy is being used to avoid expensive grid consumption."
@@ -59,10 +63,16 @@
     "current_reason": {
       "active_charge": "The current electricity price is inside a planned low-price charging window.",
       "active_discharge": "This time was classified as expensive, so stored energy is used first.",
+      "optimizer_disabled": "The optimizer is disabled. Existing charge and discharge plans are not currently being applied.",
       "waiting_for_later_cheap_slots": "There are cheaper price windows later in the day, so the optimizer is waiting now.",
       "no_economic_window": "No economically useful grid-charging window was found at the moment."
     },
     "next_action": {
+      "optimizer_disabled": {
+        "title": "Plan is paused",
+        "detail_with_plan": "A calculated plan exists, but it will only be executed again after the optimizer is re-enabled.",
+        "detail_without_plan": "There is currently no active charge or discharge plan."
+      },
       "next_charge_window": {
         "title": "Next charging window",
         "detail": "The next grid-charging phase starts when the favorable price window begins."
@@ -115,6 +125,10 @@
       "holding_from_grid": {
         "title": "Battery is waiting while the house uses grid power",
         "detail": "The battery is being held back and not released for supply."
+      },
+      "optimizer_disabled": {
+        "title": "No live measurements available",
+        "detail": "The optimizer is disabled. There are currently no fresh live measurements for the energy flow."
       }
     }
   },
@@ -160,15 +174,19 @@
       "no_data": "Unknown"
     },
     "summary": {
+      "eyebrow_optimizer_state": "Optimizer Status",
       "eyebrow_current_battery_mode": "Current Battery Mode",
       "no_data": "No data",
       "unavailable": "An explanatory dashboard summary is not available for this device yet.",
+      "calculated_plan": "Calculated Plan",
+      "latest_forecast": "Latest Forecast",
       "next_event": "Next Event",
       "today_forecast": "Today's Forecast",
       "next_not_scheduled": "Not scheduled",
       "battery_line": "{soc}% SoC · Target SoC {target}%",
       "battery_status_unavailable": "Battery status unavailable",
       "capacity_line": "Charging headroom to target SoC: {capacity} kWh",
+      "capacity_line_paused": "Charging headroom to target SoC from the last plan: {capacity} kWh",
       "no_capacity_available": "No charging headroom up to the target SoC",
       "above_target_line": "Battery is already {delta}% above the target. This energy remains available as a discharge buffer.",
       "current_energy_flow": "Current Energy Flow",
@@ -176,6 +194,9 @@
       "no_next_event": "No further event planned",
       "energy_flow_unknown": "Energy flow unknown",
       "energy_flow_no_measurements": "No live measurements are available yet.",
+      "plan_paused_note": "The optimizer is disabled. Calculated plans are currently informational only.",
+      "forecast_paused_subtext": "This is the last calculated forecast and is currently informational only.",
+      "live_flow_when_paused": "This energy flow describes only the live system state, not active optimizer control.",
       "plan_window_subtext": "{energy} kWh at avg {price} €/kWh",
       "discharge_plan_subtext": "{count} discharge windows planned · First phase: {time}",
       "today_forecast_subtext": "Estimated optimization impact for the current plan.",
@@ -186,21 +207,29 @@
       "battery": "Battery"
     },
     "stats": {
+      "paused": "Paused",
+      "optimizer_state": "Optimizer Status",
       "charge_slots": "Charge Slots",
+      "planned_charge_slots": "Planned Charge Slots",
       "expensive_periods": "Expensive Periods",
+      "planned_expensive_periods": "Planned Expensive Periods",
       "avg_price": "Avg €/kWh",
+      "plan_avg_price": "Plan Avg €/kWh",
       "free_capacity": "Free kWh To Target",
+      "last_free_capacity": "Last Free kWh To Target",
       "planned_charge": "Planned Charge kWh",
       "forecast_demand": "Forecast Demand kWh"
     },
     "price_legend": {
       "planned_grid_charge": {
         "title": "Planned Grid Charging",
-        "detail": "Yellow highlights windows where the optimizer actively schedules grid charging."
+        "detail": "Yellow highlights windows where the optimizer actively schedules grid charging.",
+        "detail_paused": "Yellow highlights calculated grid-charging windows. While the optimizer is disabled, they are informational only."
       },
       "expensive_use": {
         "title": "Expensive Consumption Time",
-        "detail": "Red marks hours where battery usage is especially valuable."
+        "detail": "Red marks hours where battery usage is especially valuable.",
+        "detail_paused": "Red marks calculated expensive phases. This control is currently paused."
       },
       "cheap_window": {
         "title": "Cheap Price Window",
@@ -226,9 +255,12 @@
       "battery_support": "🔋 Battery supplies the house",
       "battery_support_with_demand": "🔋 Battery supplies the house ({demand} kWh)",
       "no_plan": "There is no optimization plan for charging or battery usage yet.",
+      "planner_kicker_status": "System Status",
       "planner_kicker_overview": "Plan Overview",
       "planner_kicker_plan": "Optimization Plan",
       "planner_kicker_usage": "Battery Usage",
+      "optimizer_paused": "Optimizer is paused",
+      "optimizer_paused_note": "The following plan values come from the last calculation and are not currently being executed automatically.",
       "battery_and_costs": "Battery and Energy Costs",
       "battery_and_costs_note": "The most important storage and cost figures for the current optimization plan.",
       "charge_level": "Charge Level",

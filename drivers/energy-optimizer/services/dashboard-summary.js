@@ -77,6 +77,22 @@ function getIntervalEndDate(interval) {
   return new Date(startsAt.getTime() + (15 * 60 * 1000));
 }
 
+function formatDisplayDateTime(host, value) {
+  if (!value) return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toLocaleString(host.homey.i18n.getLanguage(), {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Berlin',
+  });
+}
+
 function getPlanHorizonSummary(host, strategy) {
   const allIntervals = [
     ...(Array.isArray(strategy?.chargeIntervals) ? strategy.chargeIntervals : []),
@@ -93,22 +109,6 @@ function getPlanHorizonSummary(host, strategy) {
     endsAt: latestEnd ? latestEnd.toISOString() : null,
     displayTime: latestEnd ? formatDisplayDateTime(host, latestEnd) : null,
   };
-}
-
-function formatDisplayDateTime(host, value) {
-  if (!value) return null;
-
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return date.toLocaleString(host.homey.i18n.getLanguage(), {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Berlin',
-  });
 }
 
 function getBatterySummary(strategy) {
@@ -181,7 +181,24 @@ function getDischargePlanSummary(strategy, nextDischargeInterval) {
   };
 }
 
-function getCurrentAction(host, strategy, now, activeChargeInterval, activeDischargeInterval) {
+function isOptimizerEnabled(host) {
+  if (typeof host?.getCapabilityValue === 'function') {
+    return host.getCapabilityValue('onoff') !== false;
+  }
+
+  return true;
+}
+
+function getCurrentAction(host, strategy, now, activeChargeInterval, activeDischargeInterval, optimizerEnabled) {
+  if (!optimizerEnabled) {
+    return {
+      key: 'optimizer-disabled',
+      title: translate(host, 'dashboard.current_action.optimizer_disabled.title', 'Optimizer ist ausgeschaltet'),
+      detail: translate(host, 'dashboard.current_action.optimizer_disabled.detail', 'Live-Messwerte koennen weiter sichtbar sein, der Optimierungsplan wird aktuell aber nicht ausgefuehrt.'),
+      tone: 'neutral',
+    };
+  }
+
   const mode = host.lastBatteryMode || BATTERY_MODE.IDLE;
 
   if (mode === BATTERY_MODE.CHARGE || activeChargeInterval) {
@@ -222,7 +239,11 @@ function getCurrentAction(host, strategy, now, activeChargeInterval, activeDisch
   };
 }
 
-function getCurrentReason(host, strategy, activeChargeInterval, activeDischargeInterval) {
+function getCurrentReason(host, strategy, activeChargeInterval, activeDischargeInterval, optimizerEnabled) {
+  if (!optimizerEnabled) {
+    return translate(host, 'dashboard.current_reason.optimizer_disabled', 'Der Optimizer ist deaktiviert. Vorhandene Lade- und Entladeplaene werden aktuell nicht angewendet.');
+  }
+
   if (activeChargeInterval) {
     return translate(host, 'dashboard.current_reason.active_charge', 'Der aktuelle Strompreis liegt in einem geplanten guenstigen Ladefenster.');
   }
@@ -238,10 +259,22 @@ function getCurrentReason(host, strategy, activeChargeInterval, activeDischargeI
   return translate(host, 'dashboard.current_reason.no_economic_window', 'Es wurde aktuell kein wirtschaftlich sinnvolles Netzladefenster gefunden.');
 }
 
-function getNextAction(host, strategy, now) {
+function getNextAction(host, strategy, now, optimizerEnabled) {
   const nextChargeInterval = findNextInterval(strategy?.chargeIntervals, now);
   const nextDischargeInterval = findNextInterval(strategy?.dischargeIntervals, now);
   const nextInterval = getEarlierInterval(nextChargeInterval, nextDischargeInterval);
+
+  if (!optimizerEnabled) {
+    return {
+      key: 'optimizer-disabled',
+      title: translate(host, 'dashboard.next_action.optimizer_disabled.title', 'Plan ist pausiert'),
+      detail: nextInterval
+        ? translate(host, 'dashboard.next_action.optimizer_disabled.detail_with_plan', 'Es gibt einen berechneten Plan, aber er wird erst nach erneutem Aktivieren des Optimizers ausgefuehrt.')
+        : translate(host, 'dashboard.next_action.optimizer_disabled.detail_without_plan', 'Es liegt aktuell kein aktiver Lade- oder Entladeplan vor.'),
+      startsAt: nextInterval?.startsAt || null,
+      displayTime: nextInterval ? formatDisplayDateTime(host, nextInterval.startsAt) : null,
+    };
+  }
 
   if (nextInterval === nextChargeInterval && nextChargeInterval) {
     return {
@@ -279,7 +312,7 @@ function getBatteryDirection(batteryPowerW) {
   return 'idle';
 }
 
-function getEnergyFlowSummary(host) {
+function getEnergyFlowSummary(host, optimizerEnabled) {
   const mode = host.lastBatteryMode || BATTERY_MODE.IDLE;
   const liveState = host.liveEnergyState || {};
   const gridPowerW = Number.isFinite(liveState.gridPowerW) ? liveState.gridPowerW : null;
@@ -319,15 +352,31 @@ function getEnergyFlowSummary(host) {
   } else if (solarActive) {
     title = translate(host, 'dashboard.energy_flow.solar_only.title', 'Solar versorgt das Haus');
     detail = translate(host, 'dashboard.energy_flow.solar_only.detail', 'Der aktuelle Hausverbrauch wird im Wesentlichen direkt aus Solar gedeckt.');
-  } else if (mode === BATTERY_MODE.CONSTANT) {
+  } else if (optimizerEnabled && mode === BATTERY_MODE.CONSTANT) {
     title = translate(host, 'dashboard.energy_flow.holding_from_grid.title', 'Batterie wartet, Haus nutzt Netz');
     detail = translate(host, 'dashboard.energy_flow.holding_from_grid.detail', 'Die Batterie wird gehalten und nicht zur Versorgung freigegeben.');
+  } else if (!optimizerEnabled && !Number.isFinite(gridPowerW) && !Number.isFinite(solarPowerW) && !Number.isFinite(batteryPowerW)) {
+    title = translate(host, 'dashboard.energy_flow.optimizer_disabled.title', 'Keine Live-Messwerte verfuegbar');
+    detail = translate(host, 'dashboard.energy_flow.optimizer_disabled.detail', 'Der Optimizer ist ausgeschaltet. Es liegen aktuell keine frischen Live-Messwerte fuer den Energiefluss vor.');
+  }
+
+  let houseState = 'grid';
+  if (batteryDirection === 'discharging') {
+    houseState = 'battery-supported';
+  } else if (solarActive) {
+    houseState = 'solar-supported';
+  }
+  let gridState = 'balanced';
+  if (importingFromGrid) {
+    gridState = 'importing';
+  } else if (exportingToGrid) {
+    gridState = 'exporting';
   }
 
   return {
     battery: batteryDirection,
-    house: batteryDirection === 'discharging' ? 'battery-supported' : (solarActive ? 'solar-supported' : 'grid'),
-    grid: importingFromGrid ? 'importing' : (exportingToGrid ? 'exporting' : 'balanced'),
+    house: houseState,
+    grid: gridState,
     solar: solarActive ? 'active' : 'inactive',
     title,
     detail,
@@ -338,24 +387,36 @@ function getEnergyFlowSummary(host) {
     },
     source: liveState.source || null,
     updatedAt: liveState.updatedAt || null,
+    optimizerEnabled,
   };
 }
 
 function buildDashboardSummary(host, strategyOverride = null) {
   const strategy = strategyOverride || host.currentStrategy || {};
   const now = host._dashboardSummaryNow instanceof Date ? host._dashboardSummaryNow : new Date();
+  const optimizerEnabled = isOptimizerEnabled(host);
   const activeChargeInterval = findActiveInterval(strategy.chargeIntervals, now);
   const activeDischargeInterval = findActiveInterval(strategy.dischargeIntervals, now);
   const nextChargeInterval = findNextInterval(strategy.chargeIntervals, now);
   const nextDischargeInterval = findNextInterval(strategy.dischargeIntervals, now);
   const realizedSavings = summarizeSavingsHistory(host.savingsHistory, now);
+  const hasLiveMeasurements = !!(host.liveEnergyState && (
+    Number.isFinite(host.liveEnergyState.gridPowerW)
+    || Number.isFinite(host.liveEnergyState.solarPowerW)
+    || Number.isFinite(host.liveEnergyState.batteryPowerW)
+  ));
 
   return {
     generatedAt: now.toISOString(),
-    currentAction: getCurrentAction(host, strategy, now, activeChargeInterval, activeDischargeInterval),
-    currentReason: getCurrentReason(host, strategy, activeChargeInterval, activeDischargeInterval),
-    nextAction: getNextAction(host, strategy, now),
-    energyFlow: getEnergyFlowSummary(host),
+    optimizer: {
+      enabled: optimizerEnabled,
+      planExecutionActive: optimizerEnabled,
+      hasLiveMeasurements,
+    },
+    currentAction: getCurrentAction(host, strategy, now, activeChargeInterval, activeDischargeInterval, optimizerEnabled),
+    currentReason: getCurrentReason(host, strategy, activeChargeInterval, activeDischargeInterval, optimizerEnabled),
+    nextAction: getNextAction(host, strategy, now, optimizerEnabled),
+    energyFlow: getEnergyFlowSummary(host, optimizerEnabled),
     chargePlan: (function buildChargePlanSummary() {
       const planSummary = getChargePlanSummary(strategy, nextChargeInterval);
 

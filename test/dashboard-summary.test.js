@@ -231,4 +231,50 @@ describe('dashboard summary service', () => {
     expect(summary.dischargePlan.nextStart).toBe('2026-04-29T14:00:00.000Z');
     expect(summary.planHorizon.endsAt).toBe('2026-04-29T18:15:00.000Z');
   });
+
+  it('reports optimizer-disabled state without reusing stale optimizer mode as current action', () => {
+    const host = createHost({
+      lastBatteryMode: BATTERY_MODE.CONSTANT,
+      getCapabilityValue: jest.fn((capability) => (capability === 'onoff' ? false : null)),
+      _dashboardSummaryNow: new Date('2026-04-29T13:00:00.000Z'),
+      liveEnergyState: {
+        gridPowerW: -900,
+        solarPowerW: 2400,
+        batteryPowerW: 0,
+        source: 'data-collection',
+        updatedAt: '2026-04-29T13:00:00.000Z',
+      },
+    });
+
+    const summary = buildDashboardSummary(host, {
+      chargeIntervals: [
+        { startsAt: '2026-04-29T18:00:00.000Z', total: 0.06 },
+      ],
+      dischargeIntervals: [],
+      plannedCharging: {
+        totalEnergyKWh: 2.5,
+        avgPriceEurPerKWh: 0.06,
+      },
+      batteryStatus: {
+        currentSoc: 0.62,
+        targetSoc: 0.8,
+        availableCapacity: 1.8,
+        availableCapacityToTarget: 1.8,
+        excessEnergyAboveTargetKWh: 0,
+        storedKWh: 6.2,
+        energyCost: null,
+      },
+    });
+
+    expect(summary.optimizer.enabled).toBe(false);
+    expect(summary.optimizer.planExecutionActive).toBe(false);
+    expect(summary.optimizer.hasLiveMeasurements).toBe(true);
+    expect(summary.currentAction.key).toBe('optimizer-disabled');
+    expect(summary.currentAction.title).toBe('Optimizer ist ausgeschaltet');
+    expect(summary.currentReason).toMatch(/deaktiviert/i);
+    expect(summary.nextAction.key).toBe('optimizer-disabled');
+    expect(summary.nextAction.displayTime).toBe('29.04.2026, 20:00');
+    expect(summary.energyFlow.title).toBe('Solar versorgt das Haus und speist Überschuss ein');
+    expect(summary.energyFlow.optimizerEnabled).toBe(false);
+  });
 });
