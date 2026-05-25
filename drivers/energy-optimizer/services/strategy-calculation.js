@@ -12,8 +12,122 @@ const {
   DEFAULT_TARGET_SOC,
   DEFAULT_MIN_SOC_THRESHOLD,
   DEFAULT_MIN_PROFIT_CENT_PER_KWH,
+  PRICE_TIMEZONE,
 } = require('../constants');
 const { getBatteryTargetState } = require('./battery-target-state');
+const {
+  getDateKeyInTimeZone,
+  getMinutesSinceMidnightInTimeZone,
+  resolveSunriseEstimate,
+  isMinuteInWindow,
+} = require('../sunrise-core');
+
+const SUNRISE_RECALC_PRE_MINUTES = 45;
+const SUNRISE_RECALC_POST_MINUTES = 120;
+const PV_START_FORCE_THRESHOLD_W = 100;
+const PV_START_FORCE_BASELINE_W = 20;
+
+function getHomeyGeolocationSnapshot(host) {
+  try {
+    const manager = host?.homey?.geolocation;
+    if (!manager) return null;
+
+    const latitude = typeof manager.getLatitude === 'function' ? manager.getLatitude() : null;
+    const longitude = typeof manager.getLongitude === 'function' ? manager.getLongitude() : null;
+    const accuracy = typeof manager.getAccuracy === 'function' ? manager.getAccuracy() : null;
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      accuracy: Number.isFinite(accuracy) ? accuracy : null,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function getCurrentSolarProductionW(host) {
+  try {
+    const solarDeviceId = typeof host.getSetting === 'function' ? host.getSetting('solar_device_id') : '';
+    if (!solarDeviceId || typeof solarDeviceId !== 'string' || solarDeviceId.trim() === '') {
+      return null;
+    }
+
+    const solarDevice = host.getDeviceById('solar-panel', solarDeviceId);
+    if (!solarDevice || typeof solarDevice.hasCapability !== 'function' || !solarDevice.hasCapability('measure_power')) {
+      return null;
+    }
+
+    const value = solarDevice.getCapabilityValue('measure_power');
+    return (typeof value === 'number' && Number.isFinite(value)) ? value : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getSunriseRecalcTrigger(host, now) {
+  const geolocation = getHomeyGeolocationSnapshot(host);
+  const estimate = resolveSunriseEstimate({
+    date: now,
+    timeZone: PRICE_TIMEZONE,
+    geolocation,
+    productionHistory: host.productionHistory || {},
+    intervalMinutes: INTERVAL_MINUTES,
+  });
+
+  const currentMinutes = getMinutesSinceMidnightInTimeZone(now, PRICE_TIMEZONE);
+  const sunriseMinutes = Number.isFinite(estimate?.minutes) ? estimate.minutes : null;
+  const dateKey = getDateKeyInTimeZone(now, PRICE_TIMEZONE);
+  let enteredSunriseWindow = false;
+
+  if (Number.isFinite(currentMinutes) && Number.isFinite(sunriseMinutes) && dateKey) {
+    const startMinutes = sunriseMinutes - SUNRISE_RECALC_PRE_MINUTES;
+    const endMinutes = sunriseMinutes + SUNRISE_RECALC_POST_MINUTES;
+    const inWindow = isMinuteInWindow(currentMinutes, startMinutes, endMinutes);
+    const previousInWindow = host._sunriseRecalcWindowDateKey === dateKey
+      ? Boolean(host._sunriseRecalcInWindow)
+      : false;
+    enteredSunriseWindow = inWindow && !previousInWindow;
+
+    host._sunriseRecalcWindowDateKey = dateKey;
+    host._sunriseRecalcInWindow = inWindow;
+  } else {
+    host._sunriseRecalcWindowDateKey = dateKey || null;
+    host._sunriseRecalcInWindow = false;
+  }
+
+  const currentSolarW = getCurrentSolarProductionW(host);
+  const previousSolarW = Number.isFinite(host._lastObservedSolarProductionW)
+    ? host._lastObservedSolarProductionW
+    : null;
+  const risingSolarSignal = Number.isFinite(currentSolarW)
+    && (!Number.isFinite(previousSolarW) || previousSolarW <= PV_START_FORCE_BASELINE_W)
+    && currentSolarW >= PV_START_FORCE_THRESHOLD_W;
+
+  if (Number.isFinite(currentSolarW)) {
+    host._lastObservedSolarProductionW = currentSolarW;
+  }
+
+  if (enteredSunriseWindow) {
+    return {
+      force: true,
+      reason: `sunrise-window-entered (${estimate.source || 'fallback'})`,
+    };
+  }
+
+  if (risingSolarSignal) {
+    return {
+      force: true,
+      reason: `solar-start-signal (${currentSolarW.toFixed(0)}W)`,
+    };
+  }
+
+  return { force: false, reason: null };
+}
 
 // Try to load LP solver from submodule
 let lpSolver;
@@ -69,6 +183,8 @@ function getStrategyInputHash(host) {
   const productionHistory = serializeStrategyInput(host.productionHistory || {});
   const consumptionHistory = serializeStrategyInput(host.consumptionHistory || {});
   const batteryHistory = serializeStrategyInput(host.batteryHistory || {});
+  const geolocation = getHomeyGeolocationSnapshot(host);
+  const geolocationSignature = serializeStrategyInput(geolocation || {});
 
   return [
     nowQuarterBucket,
@@ -83,6 +199,7 @@ function getStrategyInputHash(host) {
     productionHistory,
     consumptionHistory,
     batteryHistory,
+    geolocationSignature,
   ].join('|');
 }
 
@@ -91,15 +208,23 @@ function getStrategyInputHash(host) {
  * Host-based service module: operates on the EnergyOptimizerDevice instance.
  */
 async function calculateOptimalStrategy(host, { force = false } = {}) {
+  const now = new Date();
+  const sunriseTrigger = getSunriseRecalcTrigger(host, now);
+  const forceRecalc = Boolean(force || sunriseTrigger.force);
+
+  if (sunriseTrigger.force && !force && typeof host.debug === 'function') {
+    host.debug(`🌅 Forcing strategy recalc (${sunriseTrigger.reason})`);
+  }
+
   // Skip recalc if inputs haven't changed (unless forced)
-  if (!force && host._lastStrategyInputHash) {
+  if (!forceRecalc && host._lastStrategyInputHash) {
     const currentHash = getStrategyInputHash(host);
     if (currentHash === host._lastStrategyInputHash) {
       host.debug('⏭️ Skipping strategy recalc (no input changes)');
       return;
     }
     host._lastStrategyInputHash = currentHash;
-  } else if (!force) {
+  } else if (!forceRecalc) {
     host._lastStrategyInputHash = getStrategyInputHash(host);
   }
 
@@ -110,7 +235,6 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
     return;
   }
 
-  const now = new Date();
   const availableData = filterCurrentAndFutureIntervals(
     host.priceCache,
     now,
@@ -195,6 +319,14 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
   const avgPrice = indexedData.reduce((sum, p) => sum + p.total, 0) / indexedData.length;
   host.log(`Average price: ${avgPrice.toFixed(4)} €/kWh`);
 
+  const geolocation = getHomeyGeolocationSnapshot(host);
+  host._sunriseGeolocation = geolocation;
+  if (geolocation) {
+    host.log(`Sunrise source candidate: geolocation (${geolocation.latitude.toFixed(4)}, ${geolocation.longitude.toFixed(4)})`);
+  } else {
+    host.log('Sunrise source candidate: no geolocation available, fallback chain will be used');
+  }
+
   // LP-only optimization
   const lpResult = optimizeStrategyWithLp(
     indexedData,
@@ -208,6 +340,14 @@ async function calculateOptimalStrategy(host, { force = false } = {}) {
       minEnergyKWh,
       batteryCostEurPerKWh: batteryCostInfo?.avgPrice,
       minProfitEurPerKWh,
+      forecastOptions: {
+        enableSunriseBias: true,
+        sunriseBiasLevel: 'medium',
+        maxBiasKWhPerInterval: 0.15,
+        intervalMinutes: INTERVAL_MINUTES,
+        timeZone: 'Europe/Berlin',
+        geolocation,
+      },
     },
     {
       productionHistory: host.productionHistory || {},

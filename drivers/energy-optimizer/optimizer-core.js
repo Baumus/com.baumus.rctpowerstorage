@@ -1,6 +1,11 @@
 'use strict';
 
 const { SOLAR_FEED_IN_TARIFF_EUR_PER_KWH } = require('./constants');
+const {
+  getDateKeyInTimeZone,
+  getMinutesSinceMidnightInTimeZone,
+  resolveSunriseEstimate,
+} = require('./sunrise-core');
 
 /**
  * Core optimization logic - pure functions without Homey dependencies
@@ -34,6 +39,83 @@ function averageWattsForInterval(historyByIntervalOfDay, intervalOfDay) {
   return sum / arr.length;
 }
 
+function getSunriseBiasProfile(level = 'medium') {
+  if (level === 'aggressive') {
+    return {
+      preSunriseMinutes: 30,
+      rampMinutes: 150,
+      maxFloorW: 750,
+    };
+  }
+
+  if (level === 'conservative') {
+    return {
+      preSunriseMinutes: 10,
+      rampMinutes: 90,
+      maxFloorW: 350,
+    };
+  }
+
+  return {
+    preSunriseMinutes: 20,
+    rampMinutes: 120,
+    maxFloorW: 600,
+  };
+}
+
+function getSunriseFloorWatts(interval, solarHistory, intervalHours, forecastOptions, sunriseCache) {
+  if (!forecastOptions || !forecastOptions.enableSunriseBias) {
+    return 0;
+  }
+
+  if (!interval || typeof interval !== 'object' || !interval.startsAt) {
+    return 0;
+  }
+
+  const date = new Date(interval.startsAt);
+  if (Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  const timeZone = forecastOptions.timeZone || 'Europe/Berlin';
+  const dateKey = getDateKeyInTimeZone(date, timeZone);
+  if (!dateKey) return 0;
+
+  if (!sunriseCache[dateKey]) {
+    sunriseCache[dateKey] = resolveSunriseEstimate({
+      date,
+      timeZone,
+      geolocation: forecastOptions.geolocation,
+      productionHistory: solarHistory,
+      intervalMinutes: forecastOptions.intervalMinutes,
+    });
+  }
+
+  const sunrise = sunriseCache[dateKey];
+  if (!Number.isFinite(sunrise?.minutes)) {
+    return 0;
+  }
+
+  const minuteOfDay = getMinutesSinceMidnightInTimeZone(date, timeZone);
+  if (!Number.isFinite(minuteOfDay)) {
+    return 0;
+  }
+
+  const profile = getSunriseBiasProfile(forecastOptions.sunriseBiasLevel || 'medium');
+  const rampStart = sunrise.minutes - profile.preSunriseMinutes;
+  const elapsed = minuteOfDay - rampStart;
+  if (elapsed <= 0) {
+    return 0;
+  }
+
+  const rampProgress = Math.min(1, elapsed / profile.rampMinutes);
+  const shapedProgress = Math.pow(rampProgress, 1.35);
+  const capByIntervalW = Number.isFinite(forecastOptions.maxBiasKWhPerInterval)
+    ? ((forecastOptions.maxBiasKWhPerInterval / intervalHours) * 1000)
+    : profile.maxFloorW;
+  return Math.max(0, Math.min(profile.maxFloorW * shapedProgress, capByIntervalW));
+}
+
 /**
  * Forecast physically-correct per-interval signals from history:
  * - houseLoadKWh_t >= 0
@@ -50,7 +132,7 @@ function averageWattsForInterval(historyByIntervalOfDay, intervalOfDay) {
  * - solarW: PV production power (>= 0)
  * - batteryW: battery power (+charging, -discharging)
  */
-function forecastHouseSignalsPerInterval(intervals, history, intervalHours = 0.25) {
+function forecastHouseSignalsPerInterval(intervals, history, intervalHours = 0.25, forecastOptions = {}) {
   if (!intervals || intervals.length === 0) {
     return {
       houseLoadKWh: [],
@@ -75,6 +157,7 @@ function forecastHouseSignalsPerInterval(intervals, history, intervalHours = 0.2
   const solarKWh = [];
   const importDemandKWh = [];
   const solarSurplusKWh = [];
+  const sunriseCache = {};
 
   for (const interval of intervals) {
     const { intervalOfDay } = interval;
@@ -92,9 +175,26 @@ function forecastHouseSignalsPerInterval(intervals, history, intervalHours = 0.2
     const avgGridW = averageWattsForInterval(gridNetHistory, intervalOfDay);
     const avgSolarW = averageWattsForInterval(solarHistory, intervalOfDay);
     const avgBatteryW = averageWattsForInterval(batteryHistory, intervalOfDay);
+    const sunriseFloorW = getSunriseFloorWatts(
+      interval,
+      solarHistory,
+      intervalHours,
+      {
+        intervalMinutes: forecastOptions.intervalMinutes || 15,
+        enableSunriseBias: Boolean(forecastOptions.enableSunriseBias),
+        geolocation: forecastOptions.geolocation || null,
+        timeZone: forecastOptions.timeZone || 'Europe/Berlin',
+        sunriseBiasLevel: forecastOptions.sunriseBiasLevel || 'medium',
+        maxBiasKWhPerInterval: Number.isFinite(forecastOptions.maxBiasKWhPerInterval)
+          ? forecastOptions.maxBiasKWhPerInterval
+          : 0.15,
+      },
+      sunriseCache,
+    );
 
     const gridKW = (typeof avgGridW === 'number' && Number.isFinite(avgGridW)) ? (avgGridW / 1000) : 3.0;
-    const pvKW = (typeof avgSolarW === 'number' && Number.isFinite(avgSolarW)) ? Math.max(0, avgSolarW / 1000) : 0;
+    const historicalSolarW = (typeof avgSolarW === 'number' && Number.isFinite(avgSolarW)) ? Math.max(0, avgSolarW) : 0;
+    const pvKW = Math.max(historicalSolarW, sunriseFloorW) / 1000;
     const batteryKW = (typeof avgBatteryW === 'number' && Number.isFinite(avgBatteryW)) ? (avgBatteryW / 1000) : 0;
 
     const loadKW = Math.max(0, gridKW + pvKW - batteryKW);
@@ -148,6 +248,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
     batteryCostEurPerKWh,
     minProfitEurPerKWh,
     minEnergyKWh,
+    forecastOptions,
   } = params;
 
   // Validate inputs
@@ -171,7 +272,7 @@ function optimizeStrategyWithLp(indexedData, params, history, options = {}) {
   const {
     importDemandKWh: importDemandKWhPerInterval,
     solarSurplusKWh: solarSurplusKWhPerInterval,
-  } = forecastHouseSignalsPerInterval(indexedData, history, intervalHours);
+  } = forecastHouseSignalsPerInterval(indexedData, history, intervalHours, forecastOptions || {});
 
   const currentEnergyKWh = currentSoc * batteryCapacity;
   const maxEnergyKWh = targetSoc * batteryCapacity;

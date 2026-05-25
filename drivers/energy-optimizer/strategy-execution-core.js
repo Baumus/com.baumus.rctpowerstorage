@@ -105,6 +105,7 @@ function decideBatteryMode(params) {
     lastMode = null,
     currentSocPercent = null,
     minSocThresholdPercent = null,
+    sunrisePriority = null,
     thresholds = { solarThreshold: -300, consumptionThreshold: 300 },
     intervalMinutes = 15,
   } = params;
@@ -171,6 +172,7 @@ function decideBatteryMode(params) {
   // Priority 1: Charge interval
   if (shouldCharge) {
     const EPS_KWH = 0.001;
+    const SOLAR_ONLY_CONSTANT_MAX_AGE_MINUTES = 30;
     const plannedGridEnergyKWh = (() => {
       if (!matchedChargeInterval || typeof matchedChargeInterval !== 'object') return null;
       if (Number.isFinite(matchedChargeInterval.plannedGridEnergyKWh)) return matchedChargeInterval.plannedGridEnergyKWh;
@@ -202,6 +204,12 @@ function decideBatteryMode(params) {
 
     const hasPlannedGridCharge = Number.isFinite(plannedGridEnergyKWh) && plannedGridEnergyKWh > EPS_KWH;
     const hasPlannedSolarCharge = Number.isFinite(plannedSolarEnergyKWh) && plannedSolarEnergyKWh > EPS_KWH;
+    const matchedIntervalStartMs = matchedChargeInterval?.startsAt
+      ? new Date(matchedChargeInterval.startsAt).getTime()
+      : NaN;
+    const intervalAgeMinutes = Number.isFinite(matchedIntervalStartMs)
+      ? ((now.getTime() - matchedIntervalStartMs) / (60 * 1000))
+      : null;
 
     // Battery_Mode.CHARGE must only be used for charging from grid.
     // Backwards compatibility: if the strategy doesn't specify sources, assume it is a grid-charge slot.
@@ -215,6 +223,22 @@ function decideBatteryMode(params) {
 
     // Planned solar-only charging: no special mode needed.
     // Real-world behavior can differ by inverter/firmware; ensure PV can start/run by allowing NORMAL when PV is active.
+    if (sunrisePriority && sunrisePriority.active) {
+      return {
+        mode: BATTERY_MODE.NORMAL,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned solar-only charge in sunrise window (source: ${sunrisePriority.source || 'fallback'}) → NORMAL to avoid morning lock`,
+      };
+    }
+
+    if (Number.isFinite(intervalAgeMinutes) && intervalAgeMinutes > Math.max(intervalMinutes, SOLAR_ONLY_CONSTANT_MAX_AGE_MINUTES)) {
+      return {
+        mode: BATTERY_MODE.NORMAL,
+        intervalIndex: currentIntervalIndex,
+        reason: `Planned solar-only charge interval is stale (${intervalAgeMinutes.toFixed(1)} min old) → NORMAL`,
+      };
+    }
+
     if (isSolarActive) {
       return {
         mode: BATTERY_MODE.NORMAL,
@@ -242,6 +266,18 @@ function decideBatteryMode(params) {
       mode: BATTERY_MODE.NORMAL,
       intervalIndex: currentIntervalIndex,
       reason: `Planned discharge interval (price: ${priceCache[currentIntervalIndex]?.total?.toFixed(4)} €/kWh)`,
+    };
+  }
+
+  if (sunrisePriority && sunrisePriority.active) {
+    const source = sunrisePriority.source || 'fallback';
+    const sunriseLabel = Number.isFinite(sunrisePriority.sunriseMinutes)
+      ? `${Math.floor(sunrisePriority.sunriseMinutes / 60).toString().padStart(2, '0')}:${(sunrisePriority.sunriseMinutes % 60).toString().padStart(2, '0')}`
+      : 'n/a';
+    return {
+      mode: BATTERY_MODE.NORMAL,
+      intervalIndex: currentIntervalIndex,
+      reason: `Sunrise priority window active (source: ${source}, sunrise: ${sunriseLabel}) → NORMAL to prevent PV lock-out`,
     };
   }
 

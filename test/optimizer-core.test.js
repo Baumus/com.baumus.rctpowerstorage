@@ -73,6 +73,31 @@ describe('Energy Optimizer Core Logic', () => {
       expect(signals.importDemandKWh[0]).toBeCloseTo(0.10, 6);
       expect(signals.solarSurplusKWh[0]).toBeCloseTo(0, 6);
     });
+
+    test('applies geolocation-based sunrise bias floor when enabled and history has no morning PV', () => {
+      const intervals = [
+        { intervalOfDay: 22, startsAt: '2024-06-21T03:30:00.000Z' },
+      ];
+      const history = {
+        consumptionHistory: { 22: [1500, 1500, 1500] },
+        productionHistory: { 22: [0, 0, 0] },
+        batteryHistory: { 22: [0, 0, 0] },
+      };
+
+      const signals = forecastHouseSignalsPerInterval(intervals, history, 0.25, {
+        enableSunriseBias: true,
+        sunriseBiasLevel: 'medium',
+        intervalMinutes: 15,
+        timeZone: 'Europe/Berlin',
+        geolocation: {
+          latitude: 52.52,
+          longitude: 13.405,
+        },
+      });
+
+      expect(signals.solarKWh[0]).toBeGreaterThan(0);
+      expect(signals.importDemandKWh[0]).toBeLessThan(signals.houseLoadKWh[0]);
+    });
   });
 
 });

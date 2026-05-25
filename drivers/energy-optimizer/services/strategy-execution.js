@@ -7,6 +7,11 @@ const {
   GRID_SOLAR_THRESHOLD_W,
   GRID_CONSUMPTION_THRESHOLD_W,
 } = require('../constants');
+const {
+  getMinutesSinceMidnightInTimeZone,
+  resolveSunriseEstimate,
+  isMinuteInWindow,
+} = require('../sunrise-core');
 
 const PV_START_THRESHOLD_W = 50;
 const PV_KICKSTART_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -67,6 +72,65 @@ function shouldKickstartPv(host, now, solarProductionW) {
 
   // Start when we were in CONSTANT (or just booted without last mode).
   return host?.lastBatteryMode === null || host?.lastBatteryMode === BATTERY_MODE.CONSTANT;
+}
+
+function getHomeyGeolocationSnapshot(host) {
+  try {
+    const manager = host?.homey?.geolocation;
+    if (!manager) return null;
+
+    const latitude = typeof manager.getLatitude === 'function' ? manager.getLatitude() : null;
+    const longitude = typeof manager.getLongitude === 'function' ? manager.getLongitude() : null;
+    const accuracy = typeof manager.getAccuracy === 'function' ? manager.getAccuracy() : null;
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      accuracy: Number.isFinite(accuracy) ? accuracy : null,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function getSunrisePriorityContext(host, now) {
+  const geolocation = host?._sunriseGeolocation || getHomeyGeolocationSnapshot(host);
+  const estimate = resolveSunriseEstimate({
+    date: now,
+    timeZone: PV_KICKSTART_TIMEZONE,
+    geolocation,
+    productionHistory: host?.productionHistory || {},
+    intervalMinutes: INTERVAL_MINUTES,
+  });
+
+  const currentMinutes = getMinutesSinceMidnightInTimeZone(now, PV_KICKSTART_TIMEZONE);
+  const sunriseMinutes = Number.isFinite(estimate?.minutes) ? estimate.minutes : null;
+  if (!Number.isFinite(currentMinutes) || !Number.isFinite(sunriseMinutes)) {
+    return {
+      active: false,
+      source: estimate?.source || 'none',
+      sunriseMinutes,
+      currentMinutes,
+      startMinutes: null,
+      endMinutes: null,
+    };
+  }
+
+  const startMinutes = sunriseMinutes - 45;
+  const endMinutes = sunriseMinutes + 120;
+
+  return {
+    active: isMinuteInWindow(currentMinutes, startMinutes, endMinutes),
+    source: estimate.source,
+    sunriseMinutes,
+    currentMinutes,
+    startMinutes,
+    endMinutes,
+  };
 }
 
 /**
@@ -150,6 +214,10 @@ async function executeOptimizationStrategy(host) {
   const currentSocPercent = host.getCapabilitySafe(batteryDevice, 'measure_battery');
   const batteryPower = host.getCapabilitySafe(batteryDevice, 'measure_power');
   const minSocThresholdPercent = parseFloat(host.getSettingOrDefault('min_soc_threshold', DEFAULT_MIN_SOC_THRESHOLD));
+  const sunrisePriority = getSunrisePriorityContext(host, now);
+  if (sunrisePriority.active) {
+    host.log(`   Sunrise priority window active (source=${sunrisePriority.source}, sunrise=${Math.floor(sunrisePriority.sunriseMinutes / 60).toString().padStart(2, '0')}:${(sunrisePriority.sunriseMinutes % 60).toString().padStart(2, '0')})`);
+  }
 
   // Use pure function to decide battery mode
   let decision = decideBatteryMode({
@@ -165,6 +233,7 @@ async function executeOptimizationStrategy(host) {
       solarThreshold: GRID_SOLAR_THRESHOLD_W,
       consumptionThreshold: GRID_CONSUMPTION_THRESHOLD_W,
     },
+    sunrisePriority,
     intervalMinutes: INTERVAL_MINUTES,
   });
 

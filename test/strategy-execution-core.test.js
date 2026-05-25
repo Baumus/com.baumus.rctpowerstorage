@@ -202,6 +202,30 @@ describe('strategy-execution-core', () => {
         expect(result.reason).toContain('NORMAL');
       });
 
+      it('should decide NORMAL for solar-only planned charge when sunrise priority is active', () => {
+        const priceCache = createPriceCache();
+        const now = new Date('2024-01-15T01:00:00.000Z'); // Index 4
+        const strategy = {
+          chargeIntervals: [{ index: 4, plannedSolarEnergyKWh: 1.2, plannedGridEnergyKWh: 0 }],
+          dischargeIntervals: [],
+        };
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 0,
+          sunrisePriority: {
+            active: true,
+            source: 'geo',
+            sunriseMinutes: 430,
+          },
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.reason).toContain('sunrise window');
+      });
+
       it('should decide NORMAL when PV is active and exporting beyond solarThreshold', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], []);
@@ -524,6 +548,28 @@ describe('strategy-execution-core', () => {
     });
 
     describe('Default interval decisions', () => {
+      it('should prioritize NORMAL when sunrise priority window is active', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T06:15:00.000Z');
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          gridPower: 800,
+          solarProductionW: 0,
+          sunrisePriority: {
+            active: true,
+            source: 'geo',
+            sunriseMinutes: 430,
+          },
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.reason).toContain('Sunrise priority window active');
+      });
+
       it('should decide CONSTANT for solar excess', () => {
         const priceCache = createPriceCache();
         const strategy = createStrategy([], []); // No charge/discharge

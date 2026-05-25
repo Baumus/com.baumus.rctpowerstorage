@@ -296,6 +296,67 @@ describe('EnergyOptimizerDevice resource optimization', () => {
       expect(optimizer.debug).not.toHaveBeenCalledWith('⏭️ Skipping strategy recalc (no input changes)');
     });
 
+    it('should force recalculation when entering sunrise window even with unchanged hash inputs', async () => {
+      jest.setSystemTime(new Date('2024-01-15T06:20:00Z'));
+
+      const optimizer = new EnergyOptimizerDevice();
+      optimizer.log = jest.fn();
+      optimizer.debug = jest.fn();
+      optimizer.error = jest.fn();
+      optimizer.priceCache = [{ startsAt: '2024-01-15T14:00:00Z', total: 0.25 }];
+
+      const mockBattery = {
+        getCapabilityValue: jest.fn(() => 50),
+        getSetting: jest.fn(() => 10),
+      };
+
+      optimizer.getDeviceById = jest.fn(() => mockBattery);
+      optimizer.getSettingOrDefault = jest.fn((key, def) => {
+        if (key === 'battery_device_id') return 'battery-123';
+        return def;
+      });
+      optimizer.getSetting = jest.fn((key) => {
+        if (key === 'min_profit_cent_per_kwh') return 8;
+        if (key === 'solar_device_id') return '';
+        return undefined;
+      });
+      optimizer.getCapabilitySafe = jest.fn(() => 50);
+      optimizer.getSettings = jest.fn(() => ({
+        battery_capacity: 10,
+        cheap_price_factor: 0.8,
+        expensive_price_factor: 1.2,
+        min_profit_cent_per_kwh: 2,
+        forecast_days: 2,
+      }));
+      optimizer.normalizedChargePowerKW = 5;
+      optimizer.normalizedTargetSoc = 1;
+      optimizer.normalizedEfficiencyLoss = 0.1;
+      optimizer.normalizedExpensivePriceFactor = 1.2;
+      optimizer.productionHistory = {};
+      optimizer.consumptionHistory = {};
+      optimizer.batteryHistory = {};
+      optimizer.homey = {
+        __: jest.fn((key) => key),
+        i18n: { getLanguage: jest.fn(() => 'en') },
+        geolocation: {
+          getLatitude: jest.fn(() => 52.52),
+          getLongitude: jest.fn(() => 13.405),
+          getAccuracy: jest.fn(() => 50),
+        },
+      };
+      optimizer.setCapabilityValueIfChanged = jest.fn();
+
+      await optimizer.calculateOptimalStrategy();
+      optimizer.debug.mockClear();
+
+      // Stay in the same 15-minute hash bucket but enter sunrise window.
+      jest.advanceTimersByTime(6 * 60 * 1000);
+      await optimizer.calculateOptimalStrategy();
+
+      expect(optimizer.debug).not.toHaveBeenCalledWith('⏭️ Skipping strategy recalc (no input changes)');
+      expect(optimizer.debug.mock.calls.some((call) => String(call[0]).includes('🌅 Forcing strategy recalc'))).toBe(true);
+    });
+
     it('should pass combined battery cost basis + min SoC to LP and expose same values in strategy batteryStatus', async () => {
       jest.resetModules();
       jest.doMock('homey', () => ({ Device: class {} }), { virtual: true });

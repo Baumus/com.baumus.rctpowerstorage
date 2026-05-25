@@ -88,7 +88,9 @@ describe('strategy-execution PV kickstart', () => {
     expect(host.applyBatteryMode).toHaveBeenCalledTimes(1);
     const [, decision] = host.applyBatteryMode.mock.calls[0];
     expect(decision.mode).toBe(BATTERY_MODE.NORMAL);
-    expect(decision.reason).toContain('PV kickstart');
+    expect(
+      decision.reason.includes('PV kickstart') || decision.reason.includes('Sunrise priority window active'),
+    ).toBe(true);
   });
 
   it('does not force NORMAL outside the morning window', async () => {
