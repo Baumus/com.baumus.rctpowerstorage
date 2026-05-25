@@ -178,5 +178,8 @@
   },
   "4.3.14": {
     "en": "fix: optimizer logic if energy prices turn negative"
+  },
+  "4.4.0": {
+    "en": "feat: geolocation-based adjustments for energy optimization"
   }
 }
