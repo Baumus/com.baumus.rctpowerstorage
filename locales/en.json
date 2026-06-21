@@ -226,6 +226,16 @@
         "detail": "Yellow highlights windows where the optimizer actively schedules grid charging.",
         "detail_paused": "Yellow highlights calculated grid-charging windows. While the optimizer is disabled, they are informational only."
       },
+      "planned_solar_charge": {
+        "title": "Planned Solar Charging",
+        "detail": "Green highlights windows where the optimizer schedules solar charging.",
+        "detail_paused": "Green highlights calculated solar-charging windows. While the optimizer is disabled, they are informational only."
+      },
+      "planned_mixed_charge": {
+        "title": "Planned Mixed Charging",
+        "detail": "Two-color bars mark windows with a planned mix of grid and solar charging.",
+        "detail_paused": "Two-color bars mark calculated mixed-charge windows with grid and solar shares. While the optimizer is disabled, they are informational only."
+      },
       "expensive_use": {
         "title": "Expensive Consumption Time",
         "detail": "Red marks hours where battery usage is especially valuable.",

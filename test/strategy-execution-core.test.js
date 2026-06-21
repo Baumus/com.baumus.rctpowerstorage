@@ -245,7 +245,39 @@ describe('strategy-execution-core', () => {
         expect(result.reason).toContain('exporting');
       });
 
-      it('should reserve headroom with CONSTANT when future planned grid charging is cheaper than feed-in tariff', () => {
+      it('should reserve headroom with CONSTANT when future planned grid charging is cheaper than feed-in tariff and there is no active export', () => {
+        const priceCache = createPriceCache();
+        priceCache[52].total = 0.05;
+        priceCache[53].total = 0.06;
+        const strategy = {
+          chargeIntervals: [
+            { startsAt: priceCache[52].startsAt, total: 0.05, plannedGridEnergyKWh: 0.8 },
+            { startsAt: priceCache[53].startsAt, total: 0.06, plannedGridEnergyKWh: 0.8 },
+          ],
+          dischargeIntervals: [],
+          batteryStatus: {
+            availableCapacityToTarget: 0.5,
+          },
+        };
+        const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 800,
+          gridPower: 0,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.NORMAL,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
+        expect(result.reason).toContain('reserving');
+        expect(result.reason).toContain('0.0500');
+        expect(result.reason).toContain('0.0700');
+      });
+
+      it('should not reserve headroom when PV is actively exporting now', () => {
         const priceCache = createPriceCache();
         priceCache[52].total = 0.05;
         priceCache[53].total = 0.06;
@@ -268,13 +300,11 @@ describe('strategy-execution-core', () => {
           solarProductionW: 800,
           gridPower: -500,
           thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
-          lastMode: BATTERY_MODE.NORMAL,
+          lastMode: BATTERY_MODE.CONSTANT,
         });
 
-        expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
-        expect(result.reason).toContain('reserving');
-        expect(result.reason).toContain('0.0500');
-        expect(result.reason).toContain('0.0700');
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.reason).toContain('exporting');
       });
 
       it('should keep normal solar behavior when future grid charge is not below feed-in tariff', () => {
@@ -378,6 +408,25 @@ describe('strategy-execution-core', () => {
 
         expect(result.mode).toBe(BATTERY_MODE.CONSTANT);
         expect(result.reason).toContain('importing');
+      });
+
+      it('should decide NORMAL when PV is active but grid telemetry is unavailable', () => {
+        const priceCache = createPriceCache();
+        const strategy = createStrategy([], []);
+        const now = new Date('2024-01-15T12:00:00.000Z'); // Index 48
+
+        const result = decideBatteryMode({
+          now,
+          priceCache,
+          strategy,
+          solarProductionW: 300,
+          gridPower: null,
+          thresholds: { solarThreshold: -300, consumptionThreshold: 300 },
+          lastMode: BATTERY_MODE.CONSTANT,
+        });
+
+        expect(result.mode).toBe(BATTERY_MODE.NORMAL);
+        expect(result.reason).toContain('telemetry unavailable');
       });
 
       it('should keep lastMode within deadband when PV is active (hysteresis)', () => {

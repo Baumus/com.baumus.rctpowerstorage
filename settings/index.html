@@ -365,6 +365,14 @@
             background: #FFD700;
         }
 
+        .chart-legend-swatch.charging-solar {
+            background: #3CB371;
+        }
+
+        .chart-legend-swatch.charging-mixed {
+            background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #3CB371 50%, #3CB371 100%);
+        }
+
         .chart-legend-swatch.expensive {
             background: #ff4444;
         }
@@ -421,6 +429,16 @@
         
         .chart-bar.charging {
             background: #FFD700;
+            opacity: 1;
+        }
+
+        .chart-bar.charging-solar {
+            background: #3CB371;
+            opacity: 1;
+        }
+
+        .chart-bar.charging-mixed {
+            background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #3CB371 50%, #3CB371 100%);
             opacity: 1;
         }
         
@@ -1155,6 +1173,16 @@
                     detail: t(uiState.planPaused ? 'settings_page.price_legend.planned_grid_charge.detail_paused' : 'settings_page.price_legend.planned_grid_charge.detail', uiState.planPaused ? 'Gelb markiert berechnete Netzladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ.' : 'Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.'),
                 },
                 {
+                    swatchClass: 'charging-solar',
+                    title: t('settings_page.price_legend.planned_solar_charge.title', 'Geplante Solarladung'),
+                    detail: t(uiState.planPaused ? 'settings_page.price_legend.planned_solar_charge.detail_paused' : 'settings_page.price_legend.planned_solar_charge.detail', uiState.planPaused ? 'Gruen markiert berechnete Solarladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ.' : 'Gruen markiert Zeitfenster, in denen der Optimizer Solarladung einplant.'),
+                },
+                {
+                    swatchClass: 'charging-mixed',
+                    title: t('settings_page.price_legend.planned_mixed_charge.title', 'Geplante Mischladung'),
+                    detail: t(uiState.planPaused ? 'settings_page.price_legend.planned_mixed_charge.detail_paused' : 'settings_page.price_legend.planned_mixed_charge.detail', uiState.planPaused ? 'Zweifarbig markiert berechnete Mischfenster mit Netz- und Solaranteilen. Bei deaktiviertem Optimizer sind sie aktuell nur informativ.' : 'Zweifarbig markiert Zeitfenster mit geplantem Mix aus Netz- und Solarladung.'),
+                },
+                {
                     swatchClass: 'expensive',
                     title: t('settings_page.price_legend.expensive_use.title', 'Teure Verbrauchszeit'),
                     detail: t(uiState.planPaused ? 'settings_page.price_legend.expensive_use.detail_paused' : 'settings_page.price_legend.expensive_use.detail', uiState.planPaused ? 'Rot markiert berechnete teure Phasen. Diese Steuerung ist aktuell pausiert.' : 'Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.'),
@@ -1230,9 +1258,63 @@
             chartYAxis.innerHTML = yAxisHtml;
             
             // Create sets of startsAt timestamps for quick lookup
-            const chargeTimestamps = new Set(
-                (strategy?.chargeIntervals || []).map(s => s.startsAt)
-            );
+            const getPlannedChargeSplit = (interval) => {
+                if (!interval || typeof interval !== 'object') {
+                    return { gridKWh: 0, solarKWh: 0 };
+                }
+
+                let gridKWh = Number.isFinite(interval.plannedGridEnergyKWh) ? interval.plannedGridEnergyKWh : 0;
+                let solarKWh = Number.isFinite(interval.plannedSolarEnergyKWh) ? interval.plannedSolarEnergyKWh : 0;
+
+                if (Array.isArray(interval.plannedChargeParts) && interval.plannedChargeParts.length > 0) {
+                    gridKWh += interval.plannedChargeParts
+                        .filter((part) => part && part.source === 'grid')
+                        .reduce((sum, part) => sum + (Number.isFinite(part.energyKWh) ? part.energyKWh : 0), 0);
+
+                    solarKWh += interval.plannedChargeParts
+                        .filter((part) => part && part.source === 'solar')
+                        .reduce((sum, part) => sum + (Number.isFinite(part.energyKWh) ? part.energyKWh : 0), 0);
+                }
+
+                if (gridKWh <= 0 && solarKWh <= 0 && Number.isFinite(interval.plannedEnergyKWh)) {
+                    if (interval.plannedEnergySource === 'solar') {
+                        solarKWh = interval.plannedEnergyKWh;
+                    } else {
+                        // Backward compatibility: unknown source defaults to grid.
+                        gridKWh = interval.plannedEnergyKWh;
+                    }
+                }
+
+                return { gridKWh, solarKWh };
+            };
+
+            const gridChargeTimestamps = new Set();
+            const solarChargeTimestamps = new Set();
+            const mixedChargeTimestamps = new Set();
+            const EPS_KWH = 0.001;
+
+            (strategy?.chargeIntervals || []).forEach((interval) => {
+                if (!interval || !interval.startsAt) return;
+
+                const { gridKWh, solarKWh } = getPlannedChargeSplit(interval);
+                const hasGrid = gridKWh > EPS_KWH;
+                const hasSolar = solarKWh > EPS_KWH;
+
+                if (hasGrid && hasSolar) {
+                    mixedChargeTimestamps.add(interval.startsAt);
+                    return;
+                }
+
+                if (hasSolar) {
+                    solarChargeTimestamps.add(interval.startsAt);
+                    return;
+                }
+
+                if (hasGrid || (!hasGrid && !hasSolar)) {
+                    gridChargeTimestamps.add(interval.startsAt);
+                }
+            });
+
             const expensiveTimestamps = new Set(
                 getDischargeIntervals(strategy).map(s => s.startsAt)
             );
@@ -1264,7 +1346,11 @@
                 let barClass = 'chart-bar';
                 
                 // Check by timestamp instead of index
-                if (chargeTimestamps.has(priceData.startsAt)) {
+                if (mixedChargeTimestamps.has(priceData.startsAt)) {
+                    barClass += ' charging-mixed';
+                } else if (solarChargeTimestamps.has(priceData.startsAt)) {
+                    barClass += ' charging-solar';
+                } else if (gridChargeTimestamps.has(priceData.startsAt)) {
                     barClass += ' charging';
                 } else if (expensiveTimestamps.has(priceData.startsAt)) {
                     barClass += ' expensive';
@@ -1315,7 +1401,7 @@
         function describePlannedCharge(entry) {
             const symbol = entry?.plannedSymbol || '⚡';
 
-            if (symbol === '☀') {
+            if (symbol === '☀' || symbol === '☀️') {
                 return t('settings_page.timeline.describe_charge_solar', '☀ Batterie mit Solar laden');
             }
 

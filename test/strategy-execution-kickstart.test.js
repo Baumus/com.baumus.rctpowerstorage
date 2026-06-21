@@ -79,7 +79,7 @@ describe('strategy-execution PV kickstart', () => {
     return host;
   }
 
-  it('forces NORMAL once in the morning window when PV is still <= 50W and last mode was CONSTANT', async () => {
+  it('forces NORMAL in the morning window when PV is still <= 50W and last mode was CONSTANT', async () => {
     // 06:30Z = 07:30 Europe/Berlin (CET) on Jan 15
     const host = createHost({ berlinNowIso: '2024-01-15T06:30:00.000Z', solarW: 0, lastMode: BATTERY_MODE.CONSTANT });
 
@@ -96,6 +96,56 @@ describe('strategy-execution PV kickstart', () => {
   it('does not force NORMAL outside the morning window', async () => {
     // 13:00Z = 14:00 Europe/Berlin (CET)
     const host = createHost({ berlinNowIso: '2024-01-15T13:00:00.000Z', solarW: 0, lastMode: BATTERY_MODE.CONSTANT });
+
+    await executeOptimizationStrategy(host);
+
+    expect(host.applyBatteryMode).toHaveBeenCalledTimes(1);
+    const [, decision] = host.applyBatteryMode.mock.calls[0];
+    expect(decision.mode).toBe(BATTERY_MODE.CONSTANT);
+  });
+
+  it('allows a recovery-window re-kickstart after morning when PV dropped to zero again', async () => {
+    // 11:45Z = 12:45 Europe/Berlin (CET), inside recovery window (until 14:00)
+    const host = createHost({ berlinNowIso: '2024-01-15T11:45:00.000Z', solarW: 0, lastMode: BATTERY_MODE.CONSTANT });
+    host.pvKickstartAttemptDateKey = '2024-01-15';
+    host.pvKickstartAttemptsToday = 1;
+    host.pvKickstartLastTriggerMs = new Date('2024-01-15T07:00:00.000Z').getTime();
+    host.pvKickstartPeakDateKey = '2024-01-15';
+    host.pvKickstartPeakWToday = 1800;
+
+    await executeOptimizationStrategy(host);
+
+    expect(host.applyBatteryMode).toHaveBeenCalledTimes(1);
+    const [, decision] = host.applyBatteryMode.mock.calls[0];
+    expect(decision.mode).toBe(BATTERY_MODE.NORMAL);
+    expect(decision.reason).toContain('recovery window');
+    expect(decision.reason).toContain('attempt 2/4');
+  });
+
+  it('does not re-kickstart in recovery window during cooldown', async () => {
+    // 11:45Z = 12:45 Europe/Berlin (CET)
+    const host = createHost({ berlinNowIso: '2024-01-15T11:45:00.000Z', solarW: 0, lastMode: BATTERY_MODE.CONSTANT });
+    host.pvKickstartAttemptDateKey = '2024-01-15';
+    host.pvKickstartAttemptsToday = 1;
+    host.pvKickstartLastTriggerMs = new Date('2024-01-15T11:35:00.000Z').getTime();
+    host.pvKickstartPeakDateKey = '2024-01-15';
+    host.pvKickstartPeakWToday = 1800;
+
+    await executeOptimizationStrategy(host);
+
+    expect(host.applyBatteryMode).toHaveBeenCalledTimes(1);
+    const [, decision] = host.applyBatteryMode.mock.calls[0];
+    expect(decision.mode).toBe(BATTERY_MODE.CONSTANT);
+  });
+
+  it('does not re-kickstart in recovery window without prior daylight peak', async () => {
+    // 11:45Z = 12:45 Europe/Berlin (CET)
+    const host = createHost({ berlinNowIso: '2024-01-15T11:45:00.000Z', solarW: 0, lastMode: BATTERY_MODE.CONSTANT });
+    host.pvKickstartAttemptDateKey = '2024-01-15';
+    host.pvKickstartAttemptsToday = 1;
+    host.pvKickstartLastTriggerMs = new Date('2024-01-15T07:00:00.000Z').getTime();
+    host.pvKickstartPeakDateKey = '2024-01-15';
+    host.pvKickstartPeakWToday = 120;
 
     await executeOptimizationStrategy(host);
 

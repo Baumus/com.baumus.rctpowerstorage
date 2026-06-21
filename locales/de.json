@@ -223,6 +223,16 @@
         "detail": "Gelb markiert Zeitfenster, in denen der Optimizer aktiv Netzladung einplant.",
         "detail_paused": "Gelb markiert berechnete Netzladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ."
       },
+      "planned_solar_charge": {
+        "title": "Geplante Solarladung",
+        "detail": "Grün markiert Zeitfenster, in denen der Optimizer Solarladung einplant.",
+        "detail_paused": "Grün markiert berechnete Solarladefenster. Bei deaktiviertem Optimizer sind sie aktuell nur informativ."
+      },
+      "planned_mixed_charge": {
+        "title": "Geplante Mischladung",
+        "detail": "Zweifarbig markiert Zeitfenster mit geplantem Mix aus Netz- und Solarladung.",
+        "detail_paused": "Zweifarbig markiert berechnete Mischfenster mit Netz- und Solaranteilen. Bei deaktiviertem Optimizer sind sie aktuell nur informativ."
+      },
       "expensive_use": {
         "title": "Teure Verbrauchszeit",
         "detail": "Rot markiert Stunden, in denen Batterienutzung besonders wertvoll ist.",

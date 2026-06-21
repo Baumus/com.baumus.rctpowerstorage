@@ -17,6 +17,10 @@ const PV_START_THRESHOLD_W = 50;
 const PV_KICKSTART_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const PV_KICKSTART_WINDOW_START_MIN = 4 * 60; // 04:00 Europe/Berlin
 const PV_KICKSTART_WINDOW_END_MIN = 11 * 60 + 30; // 11:30 Europe/Berlin
+const PV_KICKSTART_RECOVERY_WINDOW_END_MIN = 14 * 60; // 14:00 Europe/Berlin
+const PV_KICKSTART_RETRY_COOLDOWN_MS = 20 * 60 * 1000; // 20 minutes
+const PV_KICKSTART_MAX_ATTEMPTS_PER_DAY = 4;
+const PV_KICKSTART_RECOVERY_MIN_PEAK_W = 300;
 const PV_KICKSTART_TIMEZONE = 'Europe/Berlin';
 
 function getBerlinDateKey(date) {
@@ -52,23 +56,44 @@ function shouldKickstartPv(host, now, solarProductionW) {
   const minutes = getBerlinMinutesSinceMidnight(now);
   if (!Number.isFinite(minutes)) return false;
 
-  const inWindow = minutes >= PV_KICKSTART_WINDOW_START_MIN && minutes <= PV_KICKSTART_WINDOW_END_MIN;
-  if (!inWindow) return false;
+  const inMorningWindow = minutes >= PV_KICKSTART_WINDOW_START_MIN && minutes <= PV_KICKSTART_WINDOW_END_MIN;
+  const inRecoveryWindow = minutes > PV_KICKSTART_WINDOW_END_MIN && minutes <= PV_KICKSTART_RECOVERY_WINDOW_END_MIN;
+  if (!inMorningWindow && !inRecoveryWindow) return false;
 
   const solarW = (typeof solarProductionW === 'number' && Number.isFinite(solarProductionW)) ? solarProductionW : 0;
   if (solarW > PV_START_THRESHOLD_W) return false;
 
   const todayKey = getBerlinDateKey(now);
-  const activeUntil = (host && Number.isFinite(host.pvKickstartUntilMs)) ? host.pvKickstartUntilMs : null;
-  const kickstartDateKey = host?.pvKickstartDateKey || null;
+  if (host?.pvKickstartPeakDateKey !== todayKey) {
+    host.pvKickstartPeakDateKey = todayKey;
+    host.pvKickstartPeakWToday = 0;
+  }
+  host.pvKickstartPeakWToday = Math.max(host?.pvKickstartPeakWToday || 0, solarW);
 
-  // If kickstart is currently active for today, keep it active until it expires.
-  if (kickstartDateKey === todayKey && Number.isFinite(activeUntil) && now.getTime() < activeUntil) {
+  if (host?.pvKickstartAttemptDateKey !== todayKey) {
+    host.pvKickstartAttemptDateKey = todayKey;
+    host.pvKickstartAttemptsToday = 0;
+    host.pvKickstartLastTriggerMs = null;
+  }
+
+  const activeUntil = (host && Number.isFinite(host.pvKickstartUntilMs)) ? host.pvKickstartUntilMs : null;
+  const attemptsToday = Number.isFinite(host?.pvKickstartAttemptsToday) ? host.pvKickstartAttemptsToday : 0;
+  const lastTriggerMs = Number.isFinite(host?.pvKickstartLastTriggerMs) ? host.pvKickstartLastTriggerMs : null;
+
+  // If kickstart is currently active, keep it active until it expires.
+  if (Number.isFinite(activeUntil) && now.getTime() < activeUntil) {
     return true;
   }
 
-  // Only start once per day.
-  if (kickstartDateKey === todayKey) return false;
+  if (attemptsToday >= PV_KICKSTART_MAX_ATTEMPTS_PER_DAY) return false;
+
+  if (Number.isFinite(lastTriggerMs) && (now.getTime() - lastTriggerMs) < PV_KICKSTART_RETRY_COOLDOWN_MS) {
+    return false;
+  }
+
+  if (inRecoveryWindow && (host?.pvKickstartPeakWToday || 0) < PV_KICKSTART_RECOVERY_MIN_PEAK_W) {
+    return false;
+  }
 
   // Start when we were in CONSTANT (or just booted without last mode).
   return host?.lastBatteryMode === null || host?.lastBatteryMode === BATTERY_MODE.CONSTANT;
@@ -182,24 +207,24 @@ async function executeOptimizationStrategy(host) {
   const gridPower = await host.collectGridPower();
 
   // Get solar production power (used to prevent PV start issues in CONSTANT)
-  let solarProductionW = 0;
+  let solarProductionW = null;
   try {
     const solarDeviceId = typeof host.getSetting === 'function' ? host.getSetting('solar_device_id') : '';
     if (solarDeviceId && solarDeviceId.trim() !== '') {
       const solarDevice = host.getDeviceById('solar-panel', solarDeviceId);
       if (solarDevice && solarDevice.hasCapability('measure_power')) {
         const value = solarDevice.getCapabilityValue('measure_power');
-        solarProductionW = (typeof value === 'number' && Number.isFinite(value)) ? value : 0;
-        host.log(`   Solar production: ${solarProductionW.toFixed(0)} W`);
+        solarProductionW = (typeof value === 'number' && Number.isFinite(value)) ? value : null;
+        host.log(`   Solar production: ${Number.isFinite(solarProductionW) ? solarProductionW.toFixed(0) : 'n/a'} W`);
       } else {
         host.log('   ⚠️ Solar device found but no measure_power capability');
       }
     } else {
-      host.log('   No solar device configured, defaulting to 0 W');
+      host.log('   No solar device configured, solar telemetry unavailable');
     }
   } catch (error) {
     host.log(`   ⚠️ Could not read solar production: ${error.message}`);
-    solarProductionW = 0;
+    solarProductionW = null;
   }
 
   const batteryDeviceId = host.getSettingOrDefault('battery_device_id', '');
@@ -243,12 +268,19 @@ async function executeOptimizationStrategy(host) {
   // force NORMAL once per day for a short duration to let PV ramp up.
   if (decision.mode === BATTERY_MODE.CONSTANT && shouldKickstartPv(host, now, solarProductionW)) {
     const todayKey = getBerlinDateKey(now);
-    host.pvKickstartDateKey = todayKey;
+    const minutes = getBerlinMinutesSinceMidnight(now);
+    const phaseLabel = Number.isFinite(minutes) && minutes > PV_KICKSTART_WINDOW_END_MIN
+      ? 'recovery window'
+      : 'morning window';
+
+    host.pvKickstartAttemptDateKey = todayKey;
+    host.pvKickstartAttemptsToday = (Number.isFinite(host.pvKickstartAttemptsToday) ? host.pvKickstartAttemptsToday : 0) + 1;
+    host.pvKickstartLastTriggerMs = now.getTime();
     host.pvKickstartUntilMs = now.getTime() + PV_KICKSTART_DURATION_MS;
     decision = {
       ...decision,
       mode: BATTERY_MODE.NORMAL,
-      reason: `PV kickstart (PV <= ${PV_START_THRESHOLD_W} W, morning window) → NORMAL for ${Math.round(PV_KICKSTART_DURATION_MS / 60000)} min`,
+      reason: `PV kickstart (PV <= ${PV_START_THRESHOLD_W} W, ${phaseLabel}, attempt ${host.pvKickstartAttemptsToday}/${PV_KICKSTART_MAX_ATTEMPTS_PER_DAY}) → NORMAL for ${Math.round(PV_KICKSTART_DURATION_MS / 60000)} min`,
     };
     host.log(`   PV kickstart active until ${new Date(host.pvKickstartUntilMs).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`);
   }

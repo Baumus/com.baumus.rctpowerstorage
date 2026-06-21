@@ -8,8 +8,8 @@ async function collectGridPower(host) {
   const gridDeviceId = typeof host.getSetting === 'function' ? host.getSetting('grid_device_id') : '';
 
   if (!gridDeviceId || gridDeviceId.trim() === '') {
-    host.log('   No grid device configured, defaulting to 0 W');
-    return 0;
+    host.log('   No grid device configured, grid telemetry unavailable');
+    return null;
   }
 
   try {
@@ -22,10 +22,10 @@ async function collectGridPower(host) {
     }
 
     host.log('   ⚠️ Grid device found but no measure_power capability');
-    return 0;
+    return null;
   } catch (error) {
     host.log(`   ⚠️ Could not read grid power: ${error.message}`);
-    return 0;
+    return null;
   }
 }
 

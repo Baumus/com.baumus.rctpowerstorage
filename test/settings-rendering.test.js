@@ -184,6 +184,16 @@ describe('Settings Page Data Rendering', () => {
           detail: t('settings_page.price_legend.planned_grid_charge.detail'),
         },
         {
+          swatchClass: 'charging-solar',
+          title: t('settings_page.price_legend.planned_solar_charge.title'),
+          detail: t('settings_page.price_legend.planned_solar_charge.detail'),
+        },
+        {
+          swatchClass: 'charging-mixed',
+          title: t('settings_page.price_legend.planned_mixed_charge.title'),
+          detail: t('settings_page.price_legend.planned_mixed_charge.detail'),
+        },
+        {
           swatchClass: 'expensive',
           title: t('settings_page.price_legend.expensive_use.title'),
           detail: t('settings_page.price_legend.expensive_use.detail'),
@@ -205,18 +215,22 @@ describe('Settings Page Data Rendering', () => {
         },
       ];
 
-      expect(legendItems).toHaveLength(5);
+      expect(legendItems).toHaveLength(7);
       expect(legendItems.map((item) => item.title)).toEqual([
         t('settings_page.price_legend.planned_grid_charge.title'),
+        t('settings_page.price_legend.planned_solar_charge.title'),
+        t('settings_page.price_legend.planned_mixed_charge.title'),
         t('settings_page.price_legend.expensive_use.title'),
         t('settings_page.price_legend.cheap_window.title'),
         t('settings_page.price_legend.normal_window.title'),
         t('settings_page.price_legend.average.title'),
       ]);
       expect(legendItems[0].detail).toMatch(/Gelb/);
-      expect(legendItems[1].detail).toMatch(/Rot/);
-      expect(legendItems[3].detail).toMatch(/Grau/);
-      expect(legendItems[4].swatchClass).toBe('avg-line');
+      expect(legendItems[1].detail).toMatch(/Grün/);
+      expect(legendItems[2].detail).toMatch(/Zweifarbig/);
+      expect(legendItems[3].detail).toMatch(/Rot/);
+      expect(legendItems[5].detail).toMatch(/Grau/);
+      expect(legendItems[6].swatchClass).toBe('avg-line');
     });
 
     it('should calculate price range correctly', () => {
@@ -285,7 +299,15 @@ describe('Settings Page Data Rendering', () => {
     it('should classify bars correctly', () => {
       const strategy = {
         chargeIntervals: [
-          { startsAt: '2024-01-15T22:00:00Z' },
+          { startsAt: '2024-01-15T22:00:00Z', plannedGridEnergyKWh: 0.8 },
+          { startsAt: '2024-01-15T10:15:00Z', plannedSolarEnergyKWh: 0.6 },
+          {
+            startsAt: '2024-01-15T11:15:00Z',
+            plannedChargeParts: [
+              { source: 'grid', energyKWh: 0.2 },
+              { source: 'solar', energyKWh: 0.3 },
+            ],
+          },
         ],
         expensiveIntervals: [
           { startsAt: '2024-01-15T18:00:00Z' },
@@ -297,16 +319,53 @@ describe('Settings Page Data Rendering', () => {
       const cheapThreshold = avgPrice * 0.9; // 0.18
       const expensiveThreshold = avgPrice * 1.1; // 0.22
 
-      const chargeTimestamps = new Set(
-        (strategy.chargeIntervals || []).map(s => s.startsAt)
-      );
+      const getPlannedChargeSplit = (interval) => {
+        if (!interval || typeof interval !== 'object') return { gridKWh: 0, solarKWh: 0 };
+
+        let gridKWh = Number.isFinite(interval.plannedGridEnergyKWh) ? interval.plannedGridEnergyKWh : 0;
+        let solarKWh = Number.isFinite(interval.plannedSolarEnergyKWh) ? interval.plannedSolarEnergyKWh : 0;
+
+        if (Array.isArray(interval.plannedChargeParts)) {
+          gridKWh += interval.plannedChargeParts
+            .filter((part) => part && part.source === 'grid')
+            .reduce((sum, part) => sum + (Number.isFinite(part.energyKWh) ? part.energyKWh : 0), 0);
+          solarKWh += interval.plannedChargeParts
+            .filter((part) => part && part.source === 'solar')
+            .reduce((sum, part) => sum + (Number.isFinite(part.energyKWh) ? part.energyKWh : 0), 0);
+        }
+
+        return { gridKWh, solarKWh };
+      };
+
+      const gridChargeTimestamps = new Set();
+      const solarChargeTimestamps = new Set();
+      const mixedChargeTimestamps = new Set();
+
+      (strategy.chargeIntervals || []).forEach((interval) => {
+        const { gridKWh, solarKWh } = getPlannedChargeSplit(interval);
+        const hasGrid = gridKWh > 0.001;
+        const hasSolar = solarKWh > 0.001;
+
+        if (hasGrid && hasSolar) {
+          mixedChargeTimestamps.add(interval.startsAt);
+          return;
+        }
+        if (hasSolar) {
+          solarChargeTimestamps.add(interval.startsAt);
+          return;
+        }
+        gridChargeTimestamps.add(interval.startsAt);
+      });
+
       const expensiveTimestamps = new Set(
         getDischargeIntervals(strategy).map(s => s.startsAt)
       );
 
       // Test classification
       const testPrices = [
-        { startsAt: '2024-01-15T22:00:00Z', total: 0.15 }, // Charging interval
+        { startsAt: '2024-01-15T22:00:00Z', total: 0.15 }, // Planned grid charging
+        { startsAt: '2024-01-15T10:15:00Z', total: 0.17 }, // Planned solar charging
+        { startsAt: '2024-01-15T11:15:00Z', total: 0.19 }, // Planned mixed charging
         { startsAt: '2024-01-15T18:00:00Z', total: 0.30 }, // Expensive interval
         { startsAt: '2024-01-15T10:00:00Z', total: 0.16 }, // Cheap
         { startsAt: '2024-01-15T12:00:00Z', total: 0.24 }, // Expensive
@@ -314,7 +373,9 @@ describe('Settings Page Data Rendering', () => {
       ];
 
       const classifications = testPrices.map(priceData => {
-        if (chargeTimestamps.has(priceData.startsAt)) return 'charging';
+        if (mixedChargeTimestamps.has(priceData.startsAt)) return 'charging-mixed';
+        if (solarChargeTimestamps.has(priceData.startsAt)) return 'charging-solar';
+        if (gridChargeTimestamps.has(priceData.startsAt)) return 'charging';
         if (expensiveTimestamps.has(priceData.startsAt)) return 'expensive';
         if (priceData.total <= cheapThreshold) return 'cheap';
         if (priceData.total >= expensiveThreshold) return 'expensive';
@@ -322,10 +383,12 @@ describe('Settings Page Data Rendering', () => {
       });
 
       expect(classifications[0]).toBe('charging');
-      expect(classifications[1]).toBe('expensive');
-      expect(classifications[2]).toBe('cheap');
+      expect(classifications[1]).toBe('charging-solar');
+      expect(classifications[2]).toBe('charging-mixed');
       expect(classifications[3]).toBe('expensive');
-      expect(classifications[4]).toBe('normal');
+      expect(classifications[4]).toBe('cheap');
+      expect(classifications[5]).toBe('expensive');
+      expect(classifications[6]).toBe('normal');
     });
 
     it('should handle empty price cache', () => {
@@ -363,7 +426,7 @@ describe('Settings Page Data Rendering', () => {
       const describePlannedCharge = (entry) => {
         const symbol = entry?.plannedSymbol || '⚡';
 
-        if (symbol === '☀') {
+        if (symbol === '☀' || symbol === '☀️') {
           return t('settings_page.timeline.describe_charge_solar');
         }
 
@@ -372,6 +435,7 @@ describe('Settings Page Data Rendering', () => {
 
       expect(describePlannedCharge({ plannedSymbol: '⚡' })).toBe(t('settings_page.timeline.describe_charge_grid'));
       expect(describePlannedCharge({ plannedSymbol: '☀' })).toBe(t('settings_page.timeline.describe_charge_solar'));
+      expect(describePlannedCharge({ plannedSymbol: '☀️' })).toBe(t('settings_page.timeline.describe_charge_solar'));
       expect(describePlannedCharge({})).toBe(t('settings_page.timeline.describe_charge_grid'));
     });
 

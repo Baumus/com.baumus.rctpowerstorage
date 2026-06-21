@@ -168,6 +168,8 @@ function decideBatteryMode(params) {
   const SOLAR_HEADROOM_RESERVATION_THRESHOLD_W = 300;
   const isSolarActive = (typeof solarProductionW === 'number' && Number.isFinite(solarProductionW))
     && solarProductionW > SOLAR_START_THRESHOLD_W;
+  const solarThreshold = (thresholds && Number.isFinite(thresholds.solarThreshold)) ? thresholds.solarThreshold : -300;
+  const consumptionThreshold = (thresholds && Number.isFinite(thresholds.consumptionThreshold)) ? thresholds.consumptionThreshold : 300;
 
   // Priority 1: Charge interval
   if (shouldCharge) {
@@ -289,19 +291,28 @@ function decideBatteryMode(params) {
     currentStartMs,
     SOLAR_FEED_IN_TARIFF_EUR_PER_KWH,
   );
+  const hasGridPowerForReservation = typeof gridPower === 'number' && Number.isFinite(gridPower);
+  const isExportingNow = hasGridPowerForReservation && gridPower <= solarThreshold;
   const shouldReserveHeadroomForCheapGridCharge = isSolarActive
     && solarProductionW >= SOLAR_HEADROOM_RESERVATION_THRESHOLD_W
     && Number.isFinite(availableCapacityToTargetKWh)
     && futureCheapGridReservation.energyKWh > 0.001
-    && availableCapacityToTargetKWh + 0.001 < futureCheapGridReservation.energyKWh;
+    && availableCapacityToTargetKWh + 0.001 < futureCheapGridReservation.energyKWh
+    && !isExportingNow;
 
   // Priority 3: Default interval
   // When PV is active, switch between NORMAL and CONSTANT based on gridPower thresholds
   // to avoid feeding excess solar into the grid while still preventing discharge when importing.
   if (isSolarActive) {
     const hasGridPower = typeof gridPower === 'number' && Number.isFinite(gridPower);
-    const solarThreshold = (thresholds && Number.isFinite(thresholds.solarThreshold)) ? thresholds.solarThreshold : -300;
-    const consumptionThreshold = (thresholds && Number.isFinite(thresholds.consumptionThreshold)) ? thresholds.consumptionThreshold : 300;
+
+    if (!hasGridPower) {
+      return {
+        mode: BATTERY_MODE.NORMAL,
+        intervalIndex: currentIntervalIndex,
+        reason: `PV active (${solarProductionW.toFixed(0)} W) but grid telemetry unavailable → NORMAL to avoid blocking solar charging`,
+      };
+    }
 
     if (shouldReserveHeadroomForCheapGridCharge) {
       return {
