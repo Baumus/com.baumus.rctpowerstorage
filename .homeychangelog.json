@@ -181,5 +181,8 @@
   },
   "4.4.0": {
     "en": "feat: geolocation-based adjustments for energy optimization"
+  },
+  "4.4.1": {
+    "en": "feat: Enhance energy optimization logic"
   }
 }
